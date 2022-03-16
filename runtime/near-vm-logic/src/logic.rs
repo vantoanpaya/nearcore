@@ -6,6 +6,7 @@ use crate::utils::split_method_names;
 use crate::ValuePtr;
 use byteorder::ByteOrder;
 use near_crypto::Secp256K1Signature;
+use near_primitives::receipt::ActionReceipt;
 use near_primitives::version::is_implicit_account_creation_enabled;
 use near_primitives_core::config::ExtCosts::*;
 use near_primitives_core::config::{ActionCosts, ExtCosts, VMConfig, ViewConfig};
@@ -68,6 +69,17 @@ pub struct VMLogic<'a> {
 
     /// Current protocol version that is used for the function call.
     current_protocol_version: ProtocolVersion,
+
+    // TODO docs
+    action_receipts: Vec<(AccountId, ActionReceipt)>,
+    #[cfg(feature = "protocol_feature_function_call_weight")]
+    gas_weights: Vec<(FunctionCallActionIndex, GasWeight)>,
+}
+
+#[cfg(feature = "protocol_feature_function_call_weight")]
+struct FunctionCallActionIndex {
+    receipt_index: usize,
+    action_index: usize,
 }
 
 /// Promises API allows to create a DAG-structure that defines dependencies between smart contract
@@ -143,6 +155,10 @@ impl<'a> VMLogic<'a> {
             receipt_to_account: HashMap::new(),
             total_log_length: 0,
             current_protocol_version,
+            action_receipts: vec![],
+
+            #[cfg(feature = "protocol_feature_function_call_weight")]
+            gas_weights: vec![],
         }
     }
 

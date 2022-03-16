@@ -26,7 +26,7 @@ use near_vm_logic::{External, ValuePtr};
 pub struct RuntimeExt<'a> {
     trie_update: &'a mut TrieUpdate,
     account_id: &'a AccountId,
-    action_receipts: Vec<(AccountId, ActionReceipt)>,
+    // action_receipts: Vec<(AccountId, ActionReceipt)>,
     signer_id: &'a AccountId,
     signer_public_key: &'a PublicKey,
     gas_price: Balance,
@@ -38,8 +38,8 @@ pub struct RuntimeExt<'a> {
     epoch_info_provider: &'a dyn EpochInfoProvider,
     current_protocol_version: ProtocolVersion,
 
-    #[cfg(feature = "protocol_feature_function_call_weight")]
-    gas_weights: Vec<(FunctionCallActionIndex, GasWeight)>,
+    // #[cfg(feature = "protocol_feature_function_call_weight")]
+    // gas_weights: Vec<(FunctionCallActionIndex, GasWeight)>,
 }
 
 #[cfg(feature = "protocol_feature_function_call_weight")]
@@ -93,7 +93,7 @@ impl<'a> RuntimeExt<'a> {
         RuntimeExt {
             trie_update,
             account_id,
-            action_receipts: vec![],
+            // action_receipts: vec![],
             signer_id,
             signer_public_key,
             gas_price,
@@ -105,8 +105,8 @@ impl<'a> RuntimeExt<'a> {
             epoch_info_provider,
             current_protocol_version,
 
-            #[cfg(feature = "protocol_feature_function_call_weight")]
-            gas_weights: vec![],
+            // #[cfg(feature = "protocol_feature_function_call_weight")]
+            // gas_weights: vec![],
         }
     }
 
