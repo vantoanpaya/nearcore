@@ -6,11 +6,11 @@ use crate::utils::split_method_names;
 use crate::ValuePtr;
 use byteorder::ByteOrder;
 use near_crypto::Secp256K1Signature;
-use near_primitives::receipt::ActionReceipt;
 use near_primitives::version::is_implicit_account_creation_enabled;
 use near_primitives_core::config::ExtCosts::*;
 use near_primitives_core::config::{ActionCosts, ExtCosts, VMConfig, ViewConfig};
 use near_primitives_core::profile::ProfileData;
+use near_primitives::receipt_manager::ReceiptManager;
 use near_primitives_core::runtime::fees::{
     transfer_exec_fee, transfer_send_fee, RuntimeFeesConfig,
 };
@@ -61,9 +61,8 @@ pub struct VMLogic<'a> {
 
     /// The DAG of promises, indexed by promise id.
     promises: Vec<Promise>,
-    /// Record the accounts towards which the receipts are directed.
-    receipt_to_account: HashMap<ReceiptIndex, AccountId>,
-
+    // /// Record the accounts towards which the receipts are directed.
+    // receipt_to_account: HashMap<ReceiptIndex, AccountId>,
     /// Tracks the total log length. The sum of length of all logs.
     total_log_length: u64,
 
@@ -71,9 +70,7 @@ pub struct VMLogic<'a> {
     current_protocol_version: ProtocolVersion,
 
     // TODO docs
-    action_receipts: Vec<(AccountId, ActionReceipt)>,
-    #[cfg(feature = "protocol_feature_function_call_weight")]
-    gas_weights: Vec<(FunctionCallActionIndex, GasWeight)>,
+    receipt_manager: ReceiptManager,
 }
 
 #[cfg(feature = "protocol_feature_function_call_weight")]
@@ -152,13 +149,9 @@ impl<'a> VMLogic<'a> {
             logs: vec![],
             registers: HashMap::new(),
             promises: vec![],
-            receipt_to_account: HashMap::new(),
             total_log_length: 0,
             current_protocol_version,
-            action_receipts: vec![],
-
-            #[cfg(feature = "protocol_feature_function_call_weight")]
-            gas_weights: vec![],
+            receipt_manager: ReceiptManager::default(),
         }
     }
 
@@ -1326,7 +1319,7 @@ impl<'a> VMLogic<'a> {
         let sir = account_id == self.context.current_account_id;
         self.pay_gas_for_new_receipt(sir, &[])?;
         let new_receipt_idx = self.ext.create_receipt(vec![], account_id.clone())?;
-        self.receipt_to_account.insert(new_receipt_idx, account_id);
+        // self.receipt_to_account.insert(new_receipt_idx, account_id);
 
         self.checked_push_promise(Promise::Receipt(new_receipt_idx))
     }
@@ -1379,20 +1372,20 @@ impl<'a> VMLogic<'a> {
         let sir = account_id == self.context.current_account_id;
         let deps: Vec<_> = receipt_dependencies
             .iter()
-            .map(|receipt_idx| self.get_account_by_receipt(receipt_idx) == &account_id)
+            .map(|&receipt_idx| self.get_account_by_receipt(receipt_idx) == &account_id)
             .collect();
         self.pay_gas_for_new_receipt(sir, &deps)?;
 
         let new_receipt_idx = self.ext.create_receipt(receipt_dependencies, account_id.clone())?;
-        self.receipt_to_account.insert(new_receipt_idx, account_id);
+        // self.receipt_to_account.insert(new_receipt_idx, account_id);
 
         self.checked_push_promise(Promise::Receipt(new_receipt_idx))
     }
 
     /// Helper function to return the account id towards which the receipt is directed.
-    fn get_account_by_receipt(&self, receipt_idx: &ReceiptIndex) -> &AccountId {
-        self.receipt_to_account
-            .get(receipt_idx)
+    fn get_account_by_receipt(&self, receipt_idx: ReceiptIndex) -> &AccountId {
+        self
+            .receipt_manager.get_receipt_receiver(receipt_idx)
             .expect("promises and receipt_to_account should be consistent.")
     }
 
@@ -1412,7 +1405,7 @@ impl<'a> VMLogic<'a> {
             Promise::NotReceipt(_) => Err(HostError::CannotAppendActionToJointPromise),
         }?;
 
-        let account_id = self.get_account_by_receipt(&receipt_idx);
+        let account_id = self.get_account_by_receipt(receipt_idx);
         let sir = account_id == &self.context.current_account_id;
         Ok((receipt_idx, sir))
     }
@@ -1701,7 +1694,7 @@ impl<'a> VMLogic<'a> {
         let amount = self.memory_get_u128(amount_ptr)?;
 
         let (receipt_idx, sir) = self.promise_idx_to_receipt_idx_with_sir(promise_idx)?;
-        let receiver_id = self.get_account_by_receipt(&receipt_idx);
+        let receiver_id = self.get_account_by_receipt(receipt_idx);
         let is_receiver_implicit =
             is_implicit_account_creation_enabled(self.current_protocol_version)
                 && receiver_id.is_implicit();

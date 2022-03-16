@@ -1,5 +1,6 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use derive_more::{AsRef as DeriveAsRef, From as DeriveFrom};
+use near_primitives_core::config::ViewConfig;
 use serde::{Deserialize, Serialize};
 
 use near_crypto::PublicKey;
@@ -8,6 +9,7 @@ use crate::account::{AccessKey, Account};
 use crate::challenge::ChallengesResult;
 use crate::errors::EpochError;
 use crate::hash::CryptoHash;
+use crate::receipt_manager::ReceiptManager;
 use crate::serialize::u128_dec_format;
 use crate::trie_key::TrieKey;
 
@@ -976,4 +978,10 @@ pub trait EpochInfoProvider {
     ) -> Result<Balance, EpochError>;
 
     fn minimum_stake(&self, prev_block_hash: &CryptoHash) -> Result<Balance, EpochError>;
+}
+
+// TODO docs
+pub enum ViewContext<'a> {
+    Transaction(&'a mut ReceiptManager),
+    View(ViewConfig)
 }

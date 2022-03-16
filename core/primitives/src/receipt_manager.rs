@@ -1,20 +1,20 @@
-use crate::context::VMContext;
-use crate::dependencies::{External, MemoryLike};
-use crate::gas_counter::{FastGasCounter, GasCounter};
-use crate::types::{PromiseIndex, PromiseResult, ReceiptIndex, ReturnData};
-use crate::utils::split_method_names;
-use crate::ValuePtr;
+// use crate::context::VMContext;
+// use crate::dependencies::{External, MemoryLike};
+// use crate::gas_counter::{FastGasCounter, GasCounter};
+// use crate::types::{PromiseIndex, PromiseResult, ReceiptIndex, ReturnData};
+// use crate::utils::split_method_names;
+// use crate::ValuePtr;
 use borsh::BorshDeserialize;
 use byteorder::ByteOrder;
 use near_crypto::{PublicKey, Secp256K1Signature};
-use near_primitives::account::{AccessKey, AccessKeyPermission, FunctionCallPermission};
-use near_primitives::hash::CryptoHash;
-use near_primitives::receipt::{ActionReceipt, DataReceiver, Receipt, ReceiptEnum};
-use near_primitives::transaction::{
+use crate::account::{AccessKey, AccessKeyPermission, FunctionCallPermission};
+use crate::hash::CryptoHash;
+use crate::receipt::{ActionReceipt, DataReceiver, Receipt, ReceiptEnum};
+use crate::transaction::{
     Action, AddKeyAction, CreateAccountAction, DeleteAccountAction, DeleteKeyAction,
     DeployContractAction, FunctionCallAction, StakeAction, TransferAction,
 };
-use near_primitives::version::is_implicit_account_creation_enabled;
+use crate::version::is_implicit_account_creation_enabled;
 use near_primitives_core::config::ExtCosts::*;
 use near_primitives_core::config::{ActionCosts, ExtCosts, VMConfig, ViewConfig};
 use near_primitives_core::profile::ProfileData;
@@ -46,6 +46,7 @@ struct ReceiptMetadata {
     actions: Vec<Action>,
 }
 
+#[derive(Default)]
 pub(crate) struct ReceiptManager {
     action_receipts: Vec<(AccountId, ReceiptMetadata)>,
     #[cfg(feature = "protocol_feature_function_call_weight")]
@@ -59,18 +60,22 @@ struct FunctionCallActionIndex {
 }
 
 impl ReceiptManager {
-    fn into_receipts(self, predecessor_id: &AccountId) -> Vec<Receipt> {
-        self.action_receipts
-            .into_iter()
-            .map(|(receiver_id, action_receipt)| Receipt {
-                predecessor_id: predecessor_id.clone(),
-                receiver_id,
-                // Actual receipt ID is set in the Runtime.apply_action_receipt(...) in the
-                // "Generating receipt IDs" section
-                receipt_id: CryptoHash::default(),
-                receipt: ReceiptEnum::Action(action_receipt),
-            })
-            .collect()
+    // fn into_receipts(self, predecessor_id: &AccountId) -> Vec<Receipt> {
+    //     self.action_receipts
+    //         .into_iter()
+    //         .map(|(receiver_id, action_receipt)| Receipt {
+    //             predecessor_id: predecessor_id.clone(),
+    //             receiver_id,
+    //             // Actual receipt ID is set in the Runtime.apply_action_receipt(...) in the
+    //             // "Generating receipt IDs" section
+    //             receipt_id: CryptoHash::default(),
+    //             receipt: ReceiptEnum::Action(action_receipt),
+    //         })
+    //         .collect()
+    // }
+
+    pub fn get_receipt_receiver(&self, receipt_index: u64) -> Option<&AccountId> {
+        self.action_receipts.get(receipt_index as usize).map(|(id, _)| id)
     }
 
     /// Appends an action and returns the index the action was inserted in the receipt
@@ -95,7 +100,9 @@ impl ReceiptManager {
     ) -> ExtResult<u64> {
         let mut input_data_ids = vec![];
         for receipt_index in receipt_indices {
-            let data_id = self.new_data_id();
+            // let data_id = self.new_data_id();
+            // TODO
+            let data_id = CryptoHash::default();
             self.action_receipts
                 .get_mut(receipt_index as usize)
                 .ok_or_else(|| HostError::InvalidReceiptIndex { receipt_index })?

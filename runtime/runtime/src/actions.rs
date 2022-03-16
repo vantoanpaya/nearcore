@@ -49,6 +49,7 @@ pub(crate) fn execute_function_call(
     config: &RuntimeConfig,
     is_last_action: bool,
     view_config: Option<ViewConfig>,
+    
 ) -> (Option<VMOutcome>, Option<VMError>) {
     let account_id = runtime_ext.account_id();
     let code = match runtime_ext.get_code(account.code_hash()) {
