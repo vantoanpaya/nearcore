@@ -2628,7 +2628,7 @@ impl<'a> VMLogic<'a> {
             let unused_gas = self.context.prepaid_gas - self.gas_counter.used_gas();
 
             // Distribute the unused gas and prepay for the gas.
-            if matches!(self.ext.distribute_unused_gas(unused_gas), GasDistribution::All) {
+            if matches!(self.receipt_manager.distribute_unused_gas(unused_gas), GasDistribution::All) {
                 self.gas_counter.prepay_gas(unused_gas).unwrap();
             }
         }

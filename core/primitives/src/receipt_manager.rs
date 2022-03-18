@@ -1,12 +1,3 @@
-// use crate::context::VMContext;
-// use crate::dependencies::{External, MemoryLike};
-// use crate::gas_counter::{FastGasCounter, GasCounter};
-// use crate::types::{PromiseIndex, PromiseResult, ReceiptIndex, ReturnData};
-// use crate::utils::split_method_names;
-// use crate::ValuePtr;
-use borsh::BorshDeserialize;
-use byteorder::ByteOrder;
-use near_crypto::{PublicKey, Secp256K1Signature};
 use crate::account::{AccessKey, AccessKeyPermission, FunctionCallPermission};
 use crate::hash::CryptoHash;
 use crate::receipt::{ActionReceipt, DataReceiver, Receipt, ReceiptEnum};
@@ -14,22 +5,12 @@ use crate::transaction::{
     Action, AddKeyAction, CreateAccountAction, DeleteAccountAction, DeleteKeyAction,
     DeployContractAction, FunctionCallAction, StakeAction, TransferAction,
 };
-use crate::version::is_implicit_account_creation_enabled;
-use near_primitives_core::config::ExtCosts::*;
-use near_primitives_core::config::{ActionCosts, ExtCosts, VMConfig, ViewConfig};
-use near_primitives_core::profile::ProfileData;
-use near_primitives_core::runtime::fees::{
-    transfer_exec_fee, transfer_send_fee, RuntimeFeesConfig,
-};
-use near_primitives_core::types::{
-    AccountId, Balance, EpochHeight, Gas, ProtocolVersion, StorageUsage,
-};
+use borsh::BorshDeserialize;
+use near_crypto::PublicKey;
+use near_primitives_core::types::{AccountId, Balance, Gas};
 #[cfg(feature = "protocol_feature_function_call_weight")]
 use near_primitives_core::types::{GasDistribution, GasWeight};
-use near_vm_errors::InconsistentStateError;
 use near_vm_errors::{HostError, VMLogicError};
-use std::collections::HashMap;
-use std::mem::size_of;
 
 type ExtResult<T> = ::std::result::Result<T, VMLogicError>;
 
@@ -47,7 +28,7 @@ struct ReceiptMetadata {
 }
 
 #[derive(Default)]
-pub(crate) struct ReceiptManager {
+pub struct ReceiptManager {
     action_receipts: Vec<(AccountId, ReceiptMetadata)>,
     #[cfg(feature = "protocol_feature_function_call_weight")]
     gas_weights: Vec<(FunctionCallActionIndex, GasWeight)>,
@@ -60,22 +41,34 @@ struct FunctionCallActionIndex {
 }
 
 impl ReceiptManager {
-    // fn into_receipts(self, predecessor_id: &AccountId) -> Vec<Receipt> {
-    //     self.action_receipts
-    //         .into_iter()
-    //         .map(|(receiver_id, action_receipt)| Receipt {
-    //             predecessor_id: predecessor_id.clone(),
-    //             receiver_id,
-    //             // Actual receipt ID is set in the Runtime.apply_action_receipt(...) in the
-    //             // "Generating receipt IDs" section
-    //             receipt_id: CryptoHash::default(),
-    //             receipt: ReceiptEnum::Action(action_receipt),
-    //         })
-    //         .collect()
-    // }
-
     pub fn get_receipt_receiver(&self, receipt_index: u64) -> Option<&AccountId> {
         self.action_receipts.get(receipt_index as usize).map(|(id, _)| id)
+    }
+    pub fn into_receipts(
+        self,
+        predecessor_id: &AccountId,
+        signer_id: &AccountId,
+        signer_public_key: &PublicKey,
+        gas_price: Balance,
+    ) -> Vec<Receipt> {
+        self.action_receipts
+            .into_iter()
+            .map(|(receiver_id, receipt)| Receipt {
+                predecessor_id: predecessor_id.clone(),
+                receiver_id,
+                // Actual receipt ID is set in the Runtime.apply_action_receipt(...) in the
+                // "Generating receipt IDs" section
+                receipt_id: CryptoHash::default(),
+                receipt: ReceiptEnum::Action(ActionReceipt {
+                    signer_id: signer_id.clone(),
+                    signer_public_key: signer_public_key.clone(),
+                    gas_price,
+                    output_data_receivers: receipt.output_data_receivers,
+                    input_data_ids: receipt.input_data_ids,
+                    actions: receipt.actions,
+                }),
+            })
+            .collect()
     }
 
     /// Appends an action and returns the index the action was inserted in the receipt
@@ -282,5 +275,66 @@ impl ReceiptManager {
             Action::DeleteAccount(DeleteAccountAction { beneficiary_id }),
         );
         Ok(())
+    }
+
+    /// Distribute the gas among the scheduled function calls that specify a gas weight.
+    ///
+    /// Distributes the gas passed in by splitting it among weights defined in `gas_weights`.
+    /// This will sum all weights, retrieve the gas per weight, then update each function
+    /// to add the respective amount of gas. Once all gas is distributed, the remainder of
+    /// the gas not assigned due to precision loss is added to the last function with a weight.
+    ///
+    /// # Arguments
+    ///
+    /// * `gas` - amount of unused gas to distribute
+    ///
+    /// # Returns
+    ///
+    /// Function returns a [GasDistribution] that indicates how the gas was distributed.
+    #[cfg(feature = "protocol_feature_function_call_weight")]
+    fn distribute_unused_gas(&mut self, gas: u64) -> GasDistribution {
+        let gas_weight_sum: u128 =
+            self.gas_weights.iter().map(|(_, GasWeight(weight))| *weight as u128).sum();
+        if gas_weight_sum != 0 {
+            // Floor division that will ensure gas allocated is <= gas to distribute
+            let gas_per_weight = (gas as u128 / gas_weight_sum) as u64;
+
+            let mut distribute_gas = |metadata: &FunctionCallActionIndex, assigned_gas: u64| {
+                let FunctionCallActionIndex { receipt_index, action_index } = metadata;
+                if let Some(Action::FunctionCall(FunctionCallAction { ref mut gas, .. })) = self
+                    .action_receipts
+                    .get_mut(*receipt_index)
+                    .and_then(|(_, receipt)| receipt.actions.get_mut(*action_index))
+                {
+                    *gas += assigned_gas;
+                } else {
+                    panic!(
+                        "Invalid index for assigning unused gas weight \
+                        (promise_index={}, action_index={})",
+                        receipt_index, action_index
+                    );
+                }
+            };
+
+            let mut distributed = 0;
+            for (action_index, GasWeight(weight)) in &self.gas_weights {
+                // This can't overflow because the gas_per_weight is floor division
+                // of the weight sum.
+                let assigned_gas = gas_per_weight * weight;
+
+                distribute_gas(action_index, assigned_gas);
+
+                distributed += assigned_gas
+            }
+
+            // Distribute remaining gas to final action.
+            if let Some((last_idx, _)) = self.gas_weights.last() {
+                distribute_gas(last_idx, gas - distributed);
+            }
+            self.gas_weights.clear();
+            GasDistribution::All
+        } else {
+            GasDistribution::NoRatios
+        }
     }
 }
