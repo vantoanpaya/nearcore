@@ -6,11 +6,11 @@ use crate::utils::split_method_names;
 use crate::ValuePtr;
 use byteorder::ByteOrder;
 use near_crypto::Secp256K1Signature;
+use near_primitives::receipt_manager::ReceiptManager;
 use near_primitives::version::is_implicit_account_creation_enabled;
 use near_primitives_core::config::ExtCosts::*;
 use near_primitives_core::config::{ActionCosts, ExtCosts, VMConfig, ViewConfig};
 use near_primitives_core::profile::ProfileData;
-use near_primitives::receipt_manager::ReceiptManager;
 use near_primitives_core::runtime::fees::{
     transfer_exec_fee, transfer_send_fee, RuntimeFeesConfig,
 };
@@ -73,12 +73,6 @@ pub struct VMLogic<'a> {
     receipt_manager: ReceiptManager,
 }
 
-#[cfg(feature = "protocol_feature_function_call_weight")]
-struct FunctionCallActionIndex {
-    receipt_index: usize,
-    action_index: usize,
-}
-
 /// Promises API allows to create a DAG-structure that defines dependencies between smart contract
 /// calls. A single promise can be created with zero or several dependencies on other promises.
 /// * If a promise was created from a receipt (using `promise_create` or `promise_then`) it's a
@@ -126,6 +120,7 @@ impl<'a> VMLogic<'a> {
             Some(ViewConfig { max_gas_burnt: max_gas_burnt_view }) => max_gas_burnt_view,
             None => config.limit_config.max_gas_burnt,
         };
+
         let current_account_locked_balance = context.account_locked_balance;
         let gas_counter = GasCounter::new(
             config.ext_costs.clone(),
@@ -1318,7 +1313,7 @@ impl<'a> VMLogic<'a> {
         let account_id = self.read_and_parse_account_id(account_id_ptr, account_id_len)?;
         let sir = account_id == self.context.current_account_id;
         self.pay_gas_for_new_receipt(sir, &[])?;
-        let new_receipt_idx = self.ext.create_receipt(vec![], account_id.clone())?;
+        let new_receipt_idx = self.receipt_manager.create_receipt(vec![], account_id.clone())?;
         // self.receipt_to_account.insert(new_receipt_idx, account_id);
 
         self.checked_push_promise(Promise::Receipt(new_receipt_idx))
@@ -1376,7 +1371,8 @@ impl<'a> VMLogic<'a> {
             .collect();
         self.pay_gas_for_new_receipt(sir, &deps)?;
 
-        let new_receipt_idx = self.ext.create_receipt(receipt_dependencies, account_id.clone())?;
+        let new_receipt_idx =
+            self.receipt_manager.create_receipt(receipt_dependencies, account_id.clone())?;
         // self.receipt_to_account.insert(new_receipt_idx, account_id);
 
         self.checked_push_promise(Promise::Receipt(new_receipt_idx))
@@ -1384,8 +1380,8 @@ impl<'a> VMLogic<'a> {
 
     /// Helper function to return the account id towards which the receipt is directed.
     fn get_account_by_receipt(&self, receipt_idx: ReceiptIndex) -> &AccountId {
-        self
-            .receipt_manager.get_receipt_receiver(receipt_idx)
+        self.receipt_manager
+            .get_receipt_receiver(receipt_idx)
             .expect("promises and receipt_to_account should be consistent.")
     }
 
@@ -1440,7 +1436,7 @@ impl<'a> VMLogic<'a> {
             ActionCosts::create_account,
         )?;
 
-        self.ext.append_action_create_account(receipt_idx)?;
+        self.receipt_manager.append_action_create_account(receipt_idx)?;
         Ok(())
     }
 
@@ -1498,7 +1494,7 @@ impl<'a> VMLogic<'a> {
             ActionCosts::deploy_contract,
         )?;
 
-        self.ext.append_action_deploy_contract(receipt_idx, code)?;
+        self.receipt_manager.append_action_deploy_contract(receipt_idx, code)?;
         Ok(())
     }
 
@@ -1531,7 +1527,13 @@ impl<'a> VMLogic<'a> {
         gas: Gas,
     ) -> Result<()> {
         let append_action_fn = |vm: &mut Self, receipt_idx, method_name, arguments, amount, gas| {
-            vm.ext.append_action_function_call(receipt_idx, method_name, arguments, amount, gas)
+            vm.receipt_manager.append_action_function_call(
+                receipt_idx,
+                method_name,
+                arguments,
+                amount,
+                gas,
+            )
         };
         self.internal_promise_batch_action_function_call(
             promise_idx,
@@ -1594,7 +1596,7 @@ impl<'a> VMLogic<'a> {
         gas_weight: GasWeight,
     ) -> Result<()> {
         let append_action_fn = |vm: &mut Self, receipt_idx, method_name, arguments, amount, gas| {
-            vm.ext.append_action_function_call_weight(
+            vm.receipt_manager.append_action_function_call_weight(
                 receipt_idx,
                 method_name,
                 arguments,
@@ -1709,7 +1711,7 @@ impl<'a> VMLogic<'a> {
 
         self.deduct_balance(amount)?;
 
-        self.ext.append_action_transfer(receipt_idx, amount)?;
+        self.receipt_manager.append_action_transfer(receipt_idx, amount)?;
         Ok(())
     }
 
@@ -1755,7 +1757,7 @@ impl<'a> VMLogic<'a> {
             ActionCosts::stake,
         )?;
 
-        self.ext.append_action_stake(receipt_idx, amount, public_key)?;
+        self.receipt_manager.append_action_stake(receipt_idx, amount, public_key)?;
         Ok(())
     }
 
@@ -1800,7 +1802,11 @@ impl<'a> VMLogic<'a> {
             ActionCosts::add_key,
         )?;
 
-        self.ext.append_action_add_key_with_full_access(receipt_idx, public_key, nonce)?;
+        self.receipt_manager.append_action_add_key_with_full_access(
+            receipt_idx,
+            public_key,
+            nonce,
+        )?;
         Ok(())
     }
 
@@ -1866,7 +1872,7 @@ impl<'a> VMLogic<'a> {
             ActionCosts::function_call,
         )?;
 
-        self.ext.append_action_add_key_with_function_call(
+        self.receipt_manager.append_action_add_key_with_function_call(
             receipt_idx,
             public_key,
             nonce,
@@ -1917,7 +1923,7 @@ impl<'a> VMLogic<'a> {
             ActionCosts::delete_key,
         )?;
 
-        self.ext.append_action_delete_key(receipt_idx, public_key)?;
+        self.receipt_manager.append_action_delete_key(receipt_idx, public_key)?;
         Ok(())
     }
 
@@ -1960,7 +1966,7 @@ impl<'a> VMLogic<'a> {
             ActionCosts::delete_account,
         )?;
 
-        self.ext.append_action_delete_account(receipt_idx, beneficiary_id)?;
+        self.receipt_manager.append_action_delete_account(receipt_idx, beneficiary_id)?;
         Ok(())
     }
 
@@ -2628,7 +2634,10 @@ impl<'a> VMLogic<'a> {
             let unused_gas = self.context.prepaid_gas - self.gas_counter.used_gas();
 
             // Distribute the unused gas and prepay for the gas.
-            if matches!(self.receipt_manager.distribute_unused_gas(unused_gas), GasDistribution::All) {
+            if matches!(
+                self.receipt_manager.distribute_unused_gas(unused_gas),
+                GasDistribution::All
+            ) {
                 self.gas_counter.prepay_gas(unused_gas).unwrap();
             }
         }
@@ -2647,6 +2656,9 @@ impl<'a> VMLogic<'a> {
             used_gas,
             logs: self.logs,
             profile,
+            // TODO this probably should be receipts, but we need to know the gas price from the
+            // initial action receipt to be able to convert, which happens outside VM
+            receipt_manager: self.receipt_manager,
         }
     }
 
@@ -2679,6 +2691,7 @@ pub struct VMOutcome {
     pub logs: Vec<String>,
     /// Data collected from making a contract call
     pub profile: ProfileData,
+    pub receipt_manager: ReceiptManager,
 }
 
 impl std::fmt::Debug for VMOutcome {

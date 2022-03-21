@@ -1,35 +1,21 @@
 use std::sync::Arc;
 
-use borsh::BorshDeserialize;
 use tracing::debug;
 
-use near_crypto::PublicKey;
-use near_primitives::account::{AccessKey, AccessKeyPermission, FunctionCallPermission};
 use near_primitives::contract::ContractCode;
 use near_primitives::errors::{EpochError, StorageError};
 use near_primitives::hash::CryptoHash;
-use near_primitives::receipt::{ActionReceipt, DataReceiver, Receipt, ReceiptEnum};
-use near_primitives::transaction::{
-    Action, AddKeyAction, CreateAccountAction, DeleteAccountAction, DeleteKeyAction,
-    DeployContractAction, FunctionCallAction, StakeAction, TransferAction,
-};
 use near_primitives::trie_key::{trie_key_parsers, TrieKey};
-use near_primitives::types::{AccountId, Balance, EpochId, EpochInfoProvider, Gas};
-#[cfg(feature = "protocol_feature_function_call_weight")]
-use near_primitives::types::{GasDistribution, GasWeight};
+use near_primitives::types::{AccountId, Balance, EpochId, EpochInfoProvider};
 use near_primitives::utils::create_data_id;
 use near_primitives::version::ProtocolVersion;
 use near_store::{get_code, TrieUpdate, TrieUpdateValuePtr};
-use near_vm_errors::{AnyError, HostError, VMLogicError};
+use near_vm_errors::{AnyError, VMLogicError};
 use near_vm_logic::{External, ValuePtr};
 
 pub struct RuntimeExt<'a> {
     trie_update: &'a mut TrieUpdate,
     account_id: &'a AccountId,
-    // action_receipts: Vec<(AccountId, ActionReceipt)>,
-    signer_id: &'a AccountId,
-    signer_public_key: &'a PublicKey,
-    gas_price: Balance,
     action_hash: &'a CryptoHash,
     data_count: u64,
     epoch_id: &'a EpochId,
@@ -37,15 +23,6 @@ pub struct RuntimeExt<'a> {
     last_block_hash: &'a CryptoHash,
     epoch_info_provider: &'a dyn EpochInfoProvider,
     current_protocol_version: ProtocolVersion,
-
-    // #[cfg(feature = "protocol_feature_function_call_weight")]
-    // gas_weights: Vec<(FunctionCallActionIndex, GasWeight)>,
-}
-
-#[cfg(feature = "protocol_feature_function_call_weight")]
-struct FunctionCallActionIndex {
-    receipt_index: usize,
-    action_index: usize,
 }
 
 /// Error used by `RuntimeExt`.
@@ -80,9 +57,6 @@ impl<'a> RuntimeExt<'a> {
     pub fn new(
         trie_update: &'a mut TrieUpdate,
         account_id: &'a AccountId,
-        signer_id: &'a AccountId,
-        signer_public_key: &'a PublicKey,
-        gas_price: Balance,
         action_hash: &'a CryptoHash,
         epoch_id: &'a EpochId,
         prev_block_hash: &'a CryptoHash,
@@ -93,10 +67,6 @@ impl<'a> RuntimeExt<'a> {
         RuntimeExt {
             trie_update,
             account_id,
-            // action_receipts: vec![],
-            signer_id,
-            signer_public_key,
-            gas_price,
             action_hash,
             data_count: 0,
             epoch_id,
@@ -104,7 +74,6 @@ impl<'a> RuntimeExt<'a> {
             last_block_hash,
             epoch_info_provider,
             current_protocol_version,
-
             // #[cfg(feature = "protocol_feature_function_call_weight")]
             // gas_weights: vec![],
         }
@@ -128,7 +97,8 @@ impl<'a> RuntimeExt<'a> {
         TrieKey::ContractData { account_id: self.account_id.clone(), key: key.to_vec() }
     }
 
-    fn new_data_id(&mut self) -> CryptoHash {
+    // TODO needs to be moved into trait to be used in VMLogic
+    pub fn new_data_id(&mut self) -> CryptoHash {
         let data_id = create_data_id(
             self.current_protocol_version,
             self.action_hash,

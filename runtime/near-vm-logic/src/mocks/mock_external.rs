@@ -1,5 +1,4 @@
 use crate::{External, ValuePtr};
-#[cfg(feature = "protocol_feature_function_call_weight")]
 use near_primitives_core::types::{AccountId, Balance, Gas};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -8,15 +7,7 @@ use std::collections::HashMap;
 /// Emulates the trie and the mock handling code.
 pub struct MockedExternal {
     pub fake_trie: HashMap<Vec<u8>, Vec<u8>>,
-    receipts: Vec<Receipt>,
     pub validators: HashMap<AccountId, Balance>,
-}
-
-#[derive(Clone)]
-#[cfg(feature = "protocol_feature_function_call_weight")]
-struct FunctionCallActionIndex {
-    receipt_index: usize,
-    action_index: usize,
 }
 
 pub struct MockedValuePtr {
@@ -47,10 +38,6 @@ impl MockedExternal {
         Self::default()
     }
 
-    /// Get calls to receipt create that were performed during contract call.
-    pub fn get_receipt_create_calls(&self) -> &Vec<Receipt> {
-        &self.receipts
-    }
 }
 
 use crate::dependencies::Result;

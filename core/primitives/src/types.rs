@@ -985,3 +985,9 @@ pub enum ViewContext<'a> {
     Transaction(&'a mut ReceiptManager),
     View(ViewConfig)
 }
+
+// impl From<ViewContext<'_>> for ViewConfig {
+//     fn from(_: ViewContext<'_>) -> Self {
+//         if let ViewContext::View()
+//     }
+// } 

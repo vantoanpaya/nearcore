@@ -14,6 +14,7 @@ use near_vm_errors::{HostError, VMLogicError};
 
 type ExtResult<T> = ::std::result::Result<T, VMLogicError>;
 
+#[derive(Debug, Clone, PartialEq)]
 struct ReceiptMetadata {
     /// If present, where to route the output data
     output_data_receivers: Vec<DataReceiver>,
@@ -27,7 +28,7 @@ struct ReceiptMetadata {
     actions: Vec<Action>,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone, PartialEq)]
 pub struct ReceiptManager {
     action_receipts: Vec<(AccountId, ReceiptMetadata)>,
     #[cfg(feature = "protocol_feature_function_call_weight")]
@@ -35,6 +36,7 @@ pub struct ReceiptManager {
 }
 
 #[cfg(feature = "protocol_feature_function_call_weight")]
+#[derive(Debug, Clone, Copy, PartialEq)]
 struct FunctionCallActionIndex {
     receipt_index: usize,
     action_index: usize,
@@ -72,7 +74,7 @@ impl ReceiptManager {
     }
 
     /// Appends an action and returns the index the action was inserted in the receipt
-    fn append_action(&mut self, receipt_index: u64, action: Action) -> usize {
+    pub fn append_action(&mut self, receipt_index: u64, action: Action) -> usize {
         let actions = &mut self
             .action_receipts
             .get_mut(receipt_index as usize)
@@ -86,7 +88,8 @@ impl ReceiptManager {
         actions.len() - 1
     }
 
-    fn create_receipt(
+    // TODO pull docs for all these methods into here
+    pub fn create_receipt(
         &mut self,
         receipt_indices: Vec<u64>,
         receiver_id: AccountId,
@@ -112,12 +115,12 @@ impl ReceiptManager {
         Ok(new_receipt_index)
     }
 
-    fn append_action_create_account(&mut self, receipt_index: u64) -> ExtResult<()> {
+    pub fn append_action_create_account(&mut self, receipt_index: u64) -> ExtResult<()> {
         self.append_action(receipt_index, Action::CreateAccount(CreateAccountAction {}));
         Ok(())
     }
 
-    fn append_action_deploy_contract(
+    pub fn append_action_deploy_contract(
         &mut self,
         receipt_index: u64,
         code: Vec<u8>,
@@ -127,7 +130,7 @@ impl ReceiptManager {
     }
 
     #[cfg(feature = "protocol_feature_function_call_weight")]
-    fn append_action_function_call_weight(
+    pub fn append_action_function_call_weight(
         &mut self,
         receipt_index: u64,
         method_name: Vec<u8>,
@@ -157,7 +160,7 @@ impl ReceiptManager {
         Ok(())
     }
 
-    fn append_action_function_call(
+    pub fn append_action_function_call(
         &mut self,
         receipt_index: u64,
         method_name: Vec<u8>,
@@ -178,12 +181,12 @@ impl ReceiptManager {
         Ok(())
     }
 
-    fn append_action_transfer(&mut self, receipt_index: u64, deposit: u128) -> ExtResult<()> {
+    pub fn append_action_transfer(&mut self, receipt_index: u64, deposit: u128) -> ExtResult<()> {
         self.append_action(receipt_index, Action::Transfer(TransferAction { deposit }));
         Ok(())
     }
 
-    fn append_action_stake(
+    pub fn append_action_stake(
         &mut self,
         receipt_index: u64,
         stake: u128,
@@ -200,7 +203,7 @@ impl ReceiptManager {
         Ok(())
     }
 
-    fn append_action_add_key_with_full_access(
+    pub fn append_action_add_key_with_full_access(
         &mut self,
         receipt_index: u64,
         public_key: Vec<u8>,
@@ -217,7 +220,7 @@ impl ReceiptManager {
         Ok(())
     }
 
-    fn append_action_add_key_with_function_call(
+    pub fn append_action_add_key_with_function_call(
         &mut self,
         receipt_index: u64,
         public_key: Vec<u8>,
@@ -250,7 +253,7 @@ impl ReceiptManager {
         Ok(())
     }
 
-    fn append_action_delete_key(
+    pub fn append_action_delete_key(
         &mut self,
         receipt_index: u64,
         public_key: Vec<u8>,
@@ -265,7 +268,7 @@ impl ReceiptManager {
         Ok(())
     }
 
-    fn append_action_delete_account(
+    pub fn append_action_delete_account(
         &mut self,
         receipt_index: u64,
         beneficiary_id: AccountId,
@@ -292,7 +295,7 @@ impl ReceiptManager {
     ///
     /// Function returns a [GasDistribution] that indicates how the gas was distributed.
     #[cfg(feature = "protocol_feature_function_call_weight")]
-    fn distribute_unused_gas(&mut self, gas: u64) -> GasDistribution {
+    pub fn distribute_unused_gas(&mut self, gas: u64) -> GasDistribution {
         let gas_weight_sum: u128 =
             self.gas_weights.iter().map(|(_, GasWeight(weight))| *weight as u128).sum();
         if gas_weight_sum != 0 {

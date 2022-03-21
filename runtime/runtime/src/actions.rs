@@ -49,7 +49,6 @@ pub(crate) fn execute_function_call(
     config: &RuntimeConfig,
     is_last_action: bool,
     view_config: Option<ViewConfig>,
-    
 ) -> (Option<VMOutcome>, Option<VMError>) {
     let account_id = runtime_ext.account_id();
     let code = match runtime_ext.get_code(account.code_hash()) {
@@ -137,9 +136,6 @@ pub(crate) fn action_function_call(
     let mut runtime_ext = RuntimeExt::new(
         state_update,
         account_id,
-        &action_receipt.signer_id,
-        &action_receipt.signer_public_key,
-        action_receipt.gas_price,
         action_hash,
         &apply_state.epoch_id,
         &apply_state.prev_block_hash,
@@ -236,7 +232,12 @@ pub(crate) fn action_function_call(
             account.set_amount(outcome.balance);
             account.set_storage_usage(outcome.storage_usage);
             result.result = Ok(outcome.return_data);
-            result.new_receipts.extend(runtime_ext.into_receipts(account_id));
+            result.new_receipts.extend(outcome.receipt_manager.into_receipts(
+                &receipt.predecessor_id,
+                &action_receipt.signer_id,
+                &action_receipt.signer_public_key,
+                action_receipt.gas_price,
+            ));
         }
     } else {
         assert!(!execution_succeeded, "Outcome should always be available if execution succeeded")

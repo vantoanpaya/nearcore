@@ -1,9 +1,6 @@
 //! External dependencies of the near-vm-logic.
 
-use crate::types::{PublicKey, ReceiptIndex};
-use near_primitives_core::types::{AccountId, Balance, Gas};
-#[cfg(feature = "protocol_feature_function_call_weight")]
-use near_primitives_core::types::{GasDistribution, GasWeight};
+use near_primitives_core::types::{AccountId, Balance};
 use near_vm_errors::VMLogicError;
 
 /// An abstraction over the memory of the smart contract.
