@@ -805,7 +805,7 @@ impl Chain {
             fork_tail = gc_stop_height;
         }
         let mut gc_blocks_remaining = gc_blocks_limit;
-        GC_FORK_TAIL_HEIGHT.set(fork_tail);
+        GC_FORK_TAIL_HEIGHT.set(fork_tail.try_into().unwrap());
 
         let before_fork = Instant::now();
         warn!("Before fork: {:?}", before_fork - started);
