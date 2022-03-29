@@ -47,3 +47,7 @@ pub static GC_TAIL: Lazy<IntGauge> =
     Lazy::new(|| try_create_int_gauge("near_gc_tail_height", "Tail height for GC").unwrap());
 pub static GC_STOP_HEIGHT: Lazy<IntGauge> =
     Lazy::new(|| try_create_int_gauge("near_gc_stop_height", "Stop height for GC").unwrap());
+
+pub static GC_FORK_TAIL_HEIGHT: Lazy<IntGauge> = Lazy::new(|| {
+    try_create_int_gauge("near_gc_fork_tail_height", "Fork tail height for GC").unwrap()
+});

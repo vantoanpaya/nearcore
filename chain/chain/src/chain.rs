@@ -52,7 +52,7 @@ use near_primitives::state_record::StateRecord;
 
 use crate::crypto_hash_timer::CryptoHashTimer;
 use crate::lightclient::get_epoch_block_producers_view;
-use crate::metrics::{GC_STOP_HEIGHT, GC_TAIL};
+use crate::metrics::{GC_FORK_TAIL_HEIGHT, GC_STOP_HEIGHT, GC_TAIL};
 use crate::migrations::check_if_block_is_first_with_chunk_of_version;
 use crate::missing_chunks::{BlockLike, MissingChunksPool};
 use crate::store::{ChainStore, ChainStoreAccess, ChainStoreUpdate, GCMode, SavedStoreUpdate};
@@ -805,6 +805,7 @@ impl Chain {
             fork_tail = gc_stop_height;
         }
         let mut gc_blocks_remaining = gc_blocks_limit;
+        GC_FORK_TAIL_HEIGHT.set(fork_tail);
 
         let before_fork = Instant::now();
         warn!("Before fork: {:?}", before_fork - started);
