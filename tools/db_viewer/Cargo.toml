@@ -1,0 +1,12 @@
+[package]
+name = "db_viewer"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+near-store = { path = "../../core/store" }
+near-chain-primitives = { path = "../../chain/chain-primitives" }
+near-primitives = { path = "../../core/primitives" }
+

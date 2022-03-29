@@ -1246,6 +1246,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "db_viewer"
+version = "0.1.0"
+dependencies = [
+ "near-chain-primitives",
+ "near-primitives",
+ "near-store",
+]
+
+[[package]]
 name = "deepsize"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

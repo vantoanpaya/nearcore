@@ -781,8 +781,8 @@ impl Chain {
         let head = self.store.head()?;
         let tail = self.store.tail()?;
         let gc_stop_height = self.runtime_adapter.get_gc_stop_height(&head.last_block_hash);
-        GC_TAIL.set(tail);
-        GC_STOP_HEIGHT.set(gc_stop_height);
+        GC_TAIL.set(tail.try_into().unwrap());
+        GC_STOP_HEIGHT.set(gc_stop_height.try_into().unwrap());
 
         if gc_stop_height > head.height {
             return Err(ErrorKind::GCError(

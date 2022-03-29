@@ -51,6 +51,7 @@ members = [
     "tools/storage-usage-delta-calculator",
     "tools/themis",
     "tools/chainsync-loadtest",
+    "tools/db_viewer",
     "integration-tests",
     "utils/near-rate-limiter",
     "utils/near-cache",
