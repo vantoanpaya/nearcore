@@ -778,6 +778,8 @@ impl Chain {
     ) -> Result<(), Error> {
         let _d = DelayDetector::new(|| "GC".into());
 
+        let started = Instant::now();
+
         let head = self.store.head()?;
         let tail = self.store.tail()?;
         let gc_stop_height = self.runtime_adapter.get_gc_stop_height(&head.last_block_hash);
@@ -804,11 +806,15 @@ impl Chain {
         }
         let mut gc_blocks_remaining = gc_blocks_limit;
 
+        let before_fork = Instant::now();
+        warn!("Before fork: {:?}", before_fork - started);
+
         // Forks Cleaning
         let stop_height = std::cmp::max(tail, fork_tail.saturating_sub(GC_FORK_CLEAN_STEP));
         for height in (stop_height..fork_tail).rev() {
             self.clear_forks_data(tries.clone(), height, &mut gc_blocks_remaining)?;
             if gc_blocks_remaining == 0 {
+                warn!("Finished {:?}", Instant::now() - before_fork);
                 return Ok(());
             }
             let mut chain_store_update = self.store.store_update();
@@ -816,9 +822,13 @@ impl Chain {
             chain_store_update.commit()?;
         }
 
+        let after_fork = Instant::now();
+        warn!("After fork: {:?}", after_fork - before_fork);
+
         // Canonical Chain Clearing
         for height in tail + 1..gc_stop_height {
             if gc_blocks_remaining == 0 {
+                warn!("Finished chain: {:?}", Instant::now() - after_fork);
                 return Ok(());
             }
             let mut chain_store_update = self.store.store_update();
@@ -852,6 +862,7 @@ impl Chain {
             chain_store_update.update_tail(height);
             chain_store_update.commit()?;
         }
+        warn!("Done GC: {:?}", Instant::now() - after_fork);
         Ok(())
     }
 
