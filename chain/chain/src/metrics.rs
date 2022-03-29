@@ -42,3 +42,8 @@ pub static NUM_ORPHANS: Lazy<IntGauge> =
 pub static HEADER_HEAD_HEIGHT: Lazy<IntGauge> = Lazy::new(|| {
     try_create_int_gauge("near_header_head_height", "Height of the header head").unwrap()
 });
+
+pub static GC_TAIL: Lazy<IntGauge> =
+    Lazy::new(|| try_create_int_gauge("near_gc_tail_height", "Tail height for GC").unwrap());
+pub static GC_STOP_HEIGHT: Lazy<IntGauge> =
+    Lazy::new(|| try_create_int_gauge("near_gc_stop_height", "Stop height for GC").unwrap());

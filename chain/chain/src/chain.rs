@@ -52,6 +52,7 @@ use near_primitives::state_record::StateRecord;
 
 use crate::crypto_hash_timer::CryptoHashTimer;
 use crate::lightclient::get_epoch_block_producers_view;
+use crate::metrics::{GC_STOP_HEIGHT, GC_TAIL};
 use crate::migrations::check_if_block_is_first_with_chunk_of_version;
 use crate::missing_chunks::{BlockLike, MissingChunksPool};
 use crate::store::{ChainStore, ChainStoreAccess, ChainStoreUpdate, GCMode, SavedStoreUpdate};
@@ -780,6 +781,8 @@ impl Chain {
         let head = self.store.head()?;
         let tail = self.store.tail()?;
         let gc_stop_height = self.runtime_adapter.get_gc_stop_height(&head.last_block_hash);
+        GC_TAIL.set(tail);
+        GC_STOP_HEIGHT.set(gc_stop_height);
 
         if gc_stop_height > head.height {
             return Err(ErrorKind::GCError(
