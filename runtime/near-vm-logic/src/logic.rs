@@ -154,6 +154,11 @@ impl<'a> VMLogic<'a> {
         &self.receipt_manager
     }
 
+    #[cfg(test)]
+    pub(crate) fn gas_counter(&self) -> &GasCounter {
+        &self.gas_counter
+    }
+
     // ###########################
     // # Memory helper functions #
     // ###########################
@@ -2736,5 +2741,10 @@ impl VMOutcome {
         gas_price: Balance,
     ) -> Vec<Receipt> {
         self.action_receipts.take_receipts(predecessor_id, signer_id, signer_public_key, gas_price)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn action_receipts(&self) -> &ActionReceipts {
+        &self.action_receipts
     }
 }

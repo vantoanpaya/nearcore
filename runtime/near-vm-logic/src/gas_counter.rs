@@ -279,6 +279,11 @@ impl GasCounter {
         self.promises_gas + self.fast_counter.burnt_gas
     }
 
+    #[cfg(test)]
+    pub(crate) fn remaining_gas(&self) -> Gas {
+        self.prepaid_gas - self.used_gas()
+    }
+
     pub fn profile_data(&self) -> ProfileData {
         self.profile.clone()
     }
