@@ -363,8 +363,12 @@ impl Doomslug {
     pub fn process_timer(&mut self, cur_time: Instant) -> Vec<Approval> {
         let mut ret = vec![];
         for _ in 0..MAX_TIMER_ITERS {
+            
             let skip_delay =
                 self.timer.get_delay(self.timer.height.saturating_sub(self.largest_final_height));
+
+            tracing::warn!("Doomslug timer, skip delay: {:?} started: {:?} endorsement: {:?} height: {:?} last endorsement: {:?}",
+        skip_delay, self.timer.started.elapsed(), self.endorsement_pending, self.timer.height, self.timer.last_endorsement_sent.elapsed());
 
             // The `endorsement_delay` is time to send approval to the block producer at `timer.height`,
             // while the `skip_delay` is the time before sending the approval to BP of `timer_height + 1`,
@@ -410,6 +414,7 @@ impl Doomslug {
     }
 
     pub fn create_approval(&self, target_height: BlockHeight) -> Option<Approval> {
+        tracing::warn!("Creating approval from {:?} to {:?}", self.tip.height, target_height);
         self.signer.as_ref().map(|signer| {
             Approval::new(self.tip.block_hash, self.tip.height, target_height, &**signer)
         })
@@ -498,6 +503,7 @@ impl Doomslug {
             .retain(|h, _| *h > height && *h <= height + MAX_HEIGHTS_AHEAD_TO_STORE_APPROVALS);
 
         self.endorsement_pending = true;
+        tracing::warn!("doomslug - setting tip to {:?} {:?}", height, block_hash);
     }
 
     /// Records an approval message, and return whether the block has passed the threshold / ready

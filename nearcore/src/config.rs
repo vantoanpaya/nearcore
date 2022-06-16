@@ -668,7 +668,7 @@ impl NearConfig {
                 skip_sync_wait: config.network.skip_sync_wait,
                 sync_check_period: config.consensus.sync_check_period,
                 sync_step_period: config.consensus.sync_step_period,
-                sync_height_threshold: 1,
+                sync_height_threshold: 100,
                 header_sync_initial_timeout: config.consensus.header_sync_initial_timeout,
                 header_sync_progress_timeout: config.consensus.header_sync_progress_timeout,
                 header_sync_stall_ban_timeout: config.consensus.header_sync_stall_ban_timeout,

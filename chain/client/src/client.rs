@@ -431,12 +431,12 @@ impl Client {
         }
 
         let new_chunks = self.shards_mgr.prepare_chunks(&prev_hash);
-        debug!(target: "client", "{:?} Producing block at height {}, parent {} @ {}, {} new chunks", validator_signer.validator_id(),
+        warn!(target: "client", "{:?} Producing block at height {}, parent {} @ {}, {} new chunks", validator_signer.validator_id(),
                next_height, prev.height(), format_hash(head.last_block_hash), new_chunks.len());
 
         // If we are producing empty blocks and there are no transactions.
         if !self.config.produce_empty_blocks && new_chunks.is_empty() {
-            debug!(target: "client", "Empty blocks, skipping block production");
+            warn!(target: "client", "Empty blocks, skipping block production");
             return Ok(None);
         }
 
@@ -606,7 +606,7 @@ impl Client {
             }
         }
 
-        debug!(
+        warn!(
             target: "client",
             "Producing chunk at height {} for shard {}, I'm {}",
             next_height,
@@ -667,15 +667,16 @@ impl Client {
             protocol_version,
         )?;
 
-        debug!(
+        warn!(
             target: "client",
-            "Produced chunk at height {} for shard {} with {} txs and {} receipts, I'm {}, chunk_hash: {}",
+            "Produced chunk at height {} for shard {} with {} txs and {} receipts, I'm {}, chunk_hash: {} prev_block_hash: {}",
             next_height,
             shard_id,
             num_filtered_transactions,
             outgoing_receipts.len(),
             validator_signer.validator_id(),
             encoded_chunk.chunk_hash().0,
+            prev_block_hash,
         );
 
         metrics::CHUNK_PRODUCED_TOTAL.inc();
@@ -1162,8 +1163,10 @@ impl Client {
                 self.collect_block_approval(&approval, approval_type);
             }
         }
+        tracing::warn!("Post processing a block {:?} {:?}", block.header().hash(), block.header().height());
 
         if status.is_new_head() {
+            warn!("We have a new HEAD: {:?} {:?}", block.header().hash(), block.header().height());
             self.shards_mgr.update_largest_seen_height(block.header().height());
             let last_final_block = block.header().last_final_block();
             let last_finalized_height = if last_final_block == &CryptoHash::default() {

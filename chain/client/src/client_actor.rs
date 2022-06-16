@@ -1255,6 +1255,8 @@ impl ClientActor {
                 latest_known.height - epoch_start_height < EPOCH_START_INFO_BLOCKS
             };
 
+        tracing::warn!("Considering block production between {} and {}", latest_known.height + 1, self.client.doomslug.get_largest_height_crossing_threshold());
+        // We try to produce block for multiple heights (up to the highest height for which we've seen 2/3 of approvals).
         for height in
             latest_known.height + 1..=self.client.doomslug.get_largest_height_crossing_threshold()
         {
@@ -1693,7 +1695,7 @@ impl ClientActor {
 
         if is_syncing {
             if full_peer_info.chain_info.height <= head.height {
-                info!(target: "client", "Sync: synced at {} [{}], {}, highest height peer: {}",
+                warn!(target: "client", "Sync: synced at {} [{}], {}, highest height peer: {}",
                       head.height, format_hash(head.last_block_hash),
                       full_peer_info.peer_info.id, full_peer_info.chain_info.height
                 );
@@ -1703,7 +1705,7 @@ impl ClientActor {
             if full_peer_info.chain_info.height
                 > head.height + self.client.config.sync_height_threshold
             {
-                info!(
+                warn!(
                     target: "client",
                     "Sync: height: {}, peer id/height: {}/{}, enabling sync",
                     head.height,
