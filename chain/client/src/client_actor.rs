@@ -51,7 +51,7 @@ use near_primitives::validator_signer::ValidatorSigner;
 use near_primitives::version::PROTOCOL_VERSION;
 use near_primitives::views::{
     DebugBlockStatus, DebugChunkStatus, DetailedDebugStatus, EpochInfoView, TrackedShardsView,
-    ValidatorInfo,
+    ValidatorInfo, ValidatorStatus,
 };
 use near_store::DBCol;
 use near_telemetry::TelemetryActor;
@@ -913,6 +913,19 @@ impl ClientActor {
         }
         Ok(blocks_debug)
     }
+
+
+    fn get_validator_status(
+        &mut self,
+    ) -> Result<ValidatorStatus, near_chain_primitives::Error> {
+
+        Ok(ValidatorStatus{
+            is_validator: true,
+            approval_history: self.client.doomslug.get_approval_history(),
+            upcoming_production: vec![],
+        })
+
+    }
 }
 
 impl Handler<DebugStatus> for ClientActor {
@@ -932,6 +945,9 @@ impl Handler<DebugStatus> for ClientActor {
             }
             DebugStatus::BlockStatus => {
                 Ok(DebugStatusResponse::BlockStatus(self.get_last_blocks_info()?))
+            }
+            DebugStatus::ValidatorStatus => {
+                Ok(DebugStatusResponse::ValidatorStatus(self.get_validator_status()?))
             }
         }
     }

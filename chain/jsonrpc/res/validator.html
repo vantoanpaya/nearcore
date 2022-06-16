@@ -1,0 +1,169 @@
+<html>
+
+<head>
+    <style>
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        table,
+        th,
+        td {
+            border: 1px solid black;
+        }
+
+        td {
+            text-align: left;
+            vertical-align: top;
+            padding: 8px;
+        }
+
+        th {
+            text-align: center;
+            vertical-align: center;
+            padding: 8px;
+            background-color: lightgrey;
+        }
+
+        tr.active {
+            background-color: #eff8bf;
+        }
+
+        .approval-skip {
+            background-color: yellow;
+        }
+
+        .approval-target-rollback {
+            background-color: red;
+        }
+
+        .approval-ok {
+            background-color: green;
+        }
+
+        .client-actor-delayed {
+            font-size: x-large;
+            font-weight: bold;
+        }
+    </style>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script>
+
+
+        function process_validator_status(data) {
+            if (data.status_response.ValidatorStatus.is_validator) {
+                $(".is-validator").text("Validator active");
+            } else {
+                $(".is-validator").text("NOT A VALIDATOR");
+            }
+
+            let approvalHistory = data.status_response.ValidatorStatus.approval_history;
+
+            approvalHistory.reverse().forEach((element, index) => {
+                let row =
+                    $('<tr>')
+                        .append($('<td>').append(element.approval_creation_time))
+                        .append($('<td>').append(element.parent_height))
+                        .append($('<td>').append(element.target_height))
+                        .append($('<td>').append(element.expected_delay_millis));
+
+                let client_actor_delay = element.timer_started_ago_millis - element.expected_delay_millis;
+                let client_actor_delay_cell = $('<td>').append(client_actor_delay);
+                if (client_actor_delay > 150) {
+                    client_actor_delay_cell.addClass('client-actor-delayed');
+                }
+
+                row.append(client_actor_delay_cell);
+
+                if (index < approvalHistory.length - 1 && approvalHistory[index + 1].target_height > element.target_height) {
+                    row.addClass('approval-target-rollback');
+                } else {
+                    // This means that this is a skip
+                    if (element.target_height != element.parent_height + 1) {
+                        row.addClass('approval-skip');
+                    } else {
+                        row.addClass('approval-ok');
+
+                    }
+                }
+                $('.js-tbody-approvals-sent').append(row);
+            });
+
+        }
+
+        $(document).ready(() => {
+            $('.div-progress').hide();
+            $('span').text("Loading...");
+            $.ajax({
+                type: "GET",
+                url: "http://localhost:3030/debug/api/validator_status",
+                success: data => {
+                    process_validator_status(data);
+                },
+                dataType: "json",
+                error: function (errMsg, textStatus, errorThrown) {
+                    alert("Failed: " + textStatus + " :" + errorThrown);
+                },
+                contentType: "application/json; charset=utf-8",
+            });
+        });
+    </script>
+</head>
+
+<body>
+    <h1>
+        Validator page
+    </h1>
+    <span class="is-validator"></span>
+    <div class="div-approvals-sent">
+        <h2>
+            <p>Approval history</p>
+        </h2>
+        <table>
+            <thead>
+                <tr class="js-thead-approvals-sent">
+                    <th>Time</th>
+                    <th>Approval from</th>
+                    <th>Approval to</th>
+                    <th>Delay</th>
+                    <th>Client-actor delay</th>
+
+                </tr>
+            </thead>
+            <tbody class="js-tbody-approvals-sent">
+            </tbody>
+        </table>
+    </div>
+    <h2>
+        <p>
+            <span class="js-header-sync"></span>
+        </p>
+        <p>
+            <span class="js-state-sync"></span>
+        </p>
+        <p>
+            <span class="js-block-sync"></span>
+        </p>
+    </h2>
+    <div class="div-progress">
+        <h2>
+            <p>Progress</p>
+        </h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Shard</th>
+                    <th>Progress</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody class="js-tbody-progress">
+            </tbody>
+        </table>
+    </div>
+
+
+</body>
+
+</html>

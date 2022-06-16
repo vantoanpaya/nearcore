@@ -434,6 +434,39 @@ pub struct TrackedShardsView {
 }
 
 #[cfg_attr(feature = "deepsize_feature", derive(deepsize::DeepSizeOf))]
+#[derive(Serialize, Debug, Clone)]
+pub struct ApprovalHistoryEntry {
+    // If target_height == base_height + 1  - this is endorsement.
+    // Otherwise this is a skip.
+    pub parent_height: BlockHeight,
+    pub target_height: BlockHeight,
+    // Time when we actually created the approval and sent it out.
+    pub approval_creation_time: DateTime<chrono::Utc>,
+
+    // The moment when we were ready to send this approval (or skip)
+    pub timer_started_ago_millis: u64,
+    // But we had to wait at least this long before doing it.
+    pub expected_delay_millis: u64, 
+}
+
+
+#[cfg_attr(feature = "deepsize_feature", derive(deepsize::DeepSizeOf))]
+#[derive(Serialize, Debug)]
+pub enum UpcomingProductionEntry {
+    Block,
+    Chunk,
+}
+
+#[cfg_attr(feature = "deepsize_feature", derive(deepsize::DeepSizeOf))]
+#[derive(Serialize, Debug)]
+pub struct ValidatorStatus {
+    pub is_validator: bool,
+    pub approval_history: Vec<ApprovalHistoryEntry>,
+    pub upcoming_production: Vec<UpcomingProductionEntry>,
+}
+
+
+#[cfg_attr(feature = "deepsize_feature", derive(deepsize::DeepSizeOf))]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct DetailedDebugStatus {
     pub network_info: NetworkInfoView,

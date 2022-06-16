@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -8,6 +8,7 @@ use near_primitives::hash::CryptoHash;
 use near_primitives::time::Clock;
 use near_primitives::types::{AccountId, ApprovalStake, Balance, BlockHeight, BlockHeightDelta};
 use near_primitives::validator_signer::ValidatorSigner;
+use near_primitives::views::ApprovalHistoryEntry;
 use tracing::info;
 
 /// Have that many iterations in the timer instead of `loop` to prevent potential bugs from blocking
@@ -20,6 +21,8 @@ const MAX_TIMER_ITERS: usize = 20;
 /// heights that are targeting us, which is once per as many heights as there are block producers,
 /// thus 10_000 heights in practice will mean on the order of one hundred entries.
 const MAX_HEIGHTS_AHEAD_TO_STORE_APPROVALS: BlockHeight = 10_000;
+
+const MAX_HISTORY_SIZE: usize = 1000;
 
 /// The threshold for doomslug to create a block.
 /// `TwoThirds` means the block can only be produced if at least 2/3 of the stake is approving it,
@@ -105,6 +108,8 @@ pub struct Doomslug {
     /// How many approvals to have before producing a block. In production should be always `HalfStake`,
     ///    but for many tests we use `NoApprovals` to invoke more forkfulness
     threshold_mode: DoomslugThresholdMode,
+
+    history: VecDeque<ApprovalHistoryEntry>,
 }
 
 impl DoomslugTimer {
@@ -308,6 +313,7 @@ impl Doomslug {
             },
             signer,
             threshold_mode,
+            history: VecDeque::new()
         }
     }
 
@@ -342,6 +348,18 @@ impl Doomslug {
 
     pub fn get_timer_start(&self) -> Instant {
         self.timer.started
+    }
+
+    pub fn get_approval_history(&self) -> Vec<ApprovalHistoryEntry> {
+       self.history.iter().map(|x| x.clone()).collect::<Vec<_>>()
+    }
+
+
+    fn update_history(&mut self, entry: ApprovalHistoryEntry) {
+        while self.history.len() >= MAX_HISTORY_SIZE {
+            self.history.pop_front();
+        }
+        self.history.push_back(entry);
     }
 
     /// Is expected to be called periodically and processed the timer (`start_timer` in the paper)
@@ -386,6 +404,13 @@ impl Doomslug {
                     if let Some(approval) = self.create_approval(tip_height + 1) {
                         ret.push(approval);
                     }
+                    self.update_history(ApprovalHistoryEntry {
+                        parent_height: tip_height,
+                        target_height: tip_height + 1,
+                        timer_started_ago_millis: self.timer.last_endorsement_sent.elapsed().as_millis() as u64,
+                        expected_delay_millis: self.timer.endorsement_delay.as_millis() as u64,
+                        approval_creation_time: chrono::Utc::now(),
+                    });
                 }
 
                 self.timer.last_endorsement_sent = cur_time;
@@ -401,6 +426,13 @@ impl Doomslug {
                 if let Some(approval) = self.create_approval(self.timer.height + 1) {
                     ret.push(approval);
                 }
+                self.update_history(ApprovalHistoryEntry {
+                    parent_height: tip_height,
+                    target_height: self.timer.height + 1,
+                    timer_started_ago_millis: self.timer.started.elapsed().as_millis() as u64,
+                    expected_delay_millis: skip_delay.as_millis() as u64,
+                    approval_creation_time: chrono::Utc::now(),
+                });
 
                 // Restart the timer
                 self.timer.started += skip_delay;
@@ -413,7 +445,7 @@ impl Doomslug {
         ret
     }
 
-    pub fn create_approval(&self, target_height: BlockHeight) -> Option<Approval> {
+    fn create_approval(&self, target_height: BlockHeight) -> Option<Approval> {
         tracing::warn!("Creating approval from {:?} to {:?}", self.tip.height, target_height);
         self.signer.as_ref().map(|signer| {
             Approval::new(self.tip.block_hash, self.tip.height, target_height, &**signer)
