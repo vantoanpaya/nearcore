@@ -199,7 +199,7 @@
 
             $('.js-thead-production').append($("<th>").text("Approvals"));
             for (let i = 0; i < validators_size; i += 1) {
-                $('.js-thead-production').append($("<th>").text("V" + i));
+                $('.js-thead-production').append($("<th>").text(all_validators[i][0].substring(0, 7)));
             }
             $('.js-thead-production').append($("<th>").text("Block production"));
 
@@ -210,7 +210,7 @@
             }
             let production = data.status_response.ValidatorStatus.upcoming_production;
 
-            Object.keys(production).sort().reverse().forEach(function (key) {
+            Object.keys(production).sort(function (a, b) { return a - b; }).reverse().forEach(function (key) {
                 if (key == head) {
                     $('.js-tbody-production').append($("<tr><td colspan=10><b>HEAD</b></td></tr>"));
 
@@ -235,7 +235,6 @@
                         let validator = entry[0];
                         let stake = entry[1];
                         if (approvals[validator] == null) {
-                            console.log(key + ' missing at ' + validator + ' ' + stake);
                             missingCount += stake;
                         } else {
                             if (approvals[validator][0]["Endorsement"] != null) {
@@ -333,9 +332,9 @@
 
 
                         if (entry.chunk_production[i] != null) {
-                            chunk_cell.append("own production <br> <b>T + " + (time_delta ?? "-") + " ms </b>  <br>F +" + (time_since_threshold ?? "-") + "ms <br>Production duration: " + (entry.chunk_production[i].chunk_production_duration_millis ?? "-") + " ms");
+                            chunk_cell.append("own production <br> F + " + (time_delta ?? "-") + " ms <br><b>T +" + (time_since_threshold ?? "-") + "ms </b> <br>Production duration: " + (entry.chunk_production[i].chunk_production_duration_millis ?? "-") + " ms");
                         } else {
-                            chunk_cell.append("received <br> <b>T + " + (time_delta ?? "-") + " ms </b> <br>F + " + (time_since_threshold ?? "-") + "ms <br>");
+                            chunk_cell.append("received <br> F + " + (time_delta ?? "-") + " ms  <br><b>T + " + (time_since_threshold ?? "-") + "ms</b> <br>");
                         }
                         row.append(chunk_cell);
                     }
