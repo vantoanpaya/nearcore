@@ -51,7 +51,7 @@ use near_primitives::validator_signer::ValidatorSigner;
 use near_primitives::version::PROTOCOL_VERSION;
 use near_primitives::views::{
     DebugBlockStatus, DebugChunkStatus, DetailedDebugStatus, EpochInfoView, TrackedShardsView,
-    ValidatorInfo, ValidatorStatus,
+    ValidatorInfo, ValidatorStatus, ProductionAtHeight, ChunkProduction, BlockProduction
 };
 use near_store::DBCol;
 use near_telemetry::TelemetryActor;
@@ -919,10 +919,61 @@ impl ClientActor {
         &mut self,
     ) -> Result<ValidatorStatus, near_chain_primitives::Error> {
 
+        let head = self.client.chain.head()?;
+
+        let mut foo: HashMap<BlockHeight, ProductionAtHeight> = HashMap::new();
+
+        if let Some(signer) = &self.client.validator_signer {
+            let validator_id = signer.validator_id().to_string();
+
+            // Look 50 blocks ahead to see what blocks we're about to produce.
+            for delta in 0..20 {
+                let height = head.height.saturating_sub(10) + delta;
+                
+                let mut production = ProductionAtHeight::default();
+
+
+                production.approvals = self.client.doomslug.approval_status_at_heigth(&height);
+
+
+                let block_producer = self
+                .client
+                .runtime_adapter
+                .get_block_producer(&head.epoch_id, height)
+                .map(|f| f.to_string())
+                .unwrap_or_default();
+
+                if block_producer == validator_id {                    
+                    production.block_production = self.client.block_production_times.get(&height).cloned().or(Some(BlockProduction::default()));
+                }
+
+                for shard_id in 0..self.client.runtime_adapter.num_shards(&head.epoch_id)? {
+                    let chunk_producer = self.client.runtime_adapter.get_chunk_producer(&head.epoch_id, height, shard_id).map(|f| f.to_string()).unwrap_or_default();
+                    if chunk_producer == validator_id {
+                        production.chunk_production.insert(shard_id, ChunkProduction {
+                            chunk_production_duration_millis: self.client.chunk_production_times.get(&(height, shard_id)).map(|i| i.as_millis() as u64),
+                            chunk_production_time: None,
+                        });
+                    }
+                }
+                foo.insert(height, production);
+            }
+        }
+
+        
+
+
         Ok(ValidatorStatus{
-            is_validator: true,
+            validator_name: self.client.validator_signer.as_ref().map(|signer| signer.validator_id().to_string()),
+            validators: self.client.runtime_adapter.get_epoch_block_approvers_ordered(&head.last_block_hash).map(|validators|
+                validators.iter().map(|validator| {
+                    (validator.0.account_id.to_string(), (validator.0.stake_this_epoch / u128::pow(10, 24)) as u64)
+                }).collect::<Vec<(String, u64)>>()
+            ).ok(),
+            head_height: head.height,
+            shards: self.client.runtime_adapter.num_shards(&head.epoch_id).unwrap_or_default(),
             approval_history: self.client.doomslug.get_approval_history(),
-            upcoming_production: vec![],
+            upcoming_production: foo,
         })
 
     }

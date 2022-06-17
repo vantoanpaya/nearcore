@@ -38,7 +38,7 @@ use near_primitives::types::{AccountId, ApprovalStake, BlockHeight, EpochId, Num
 use near_primitives::unwrap_or_return;
 use near_primitives::utils::MaybeValidated;
 use near_primitives::validator_signer::ValidatorSigner;
-use near_primitives::views::{BlockByChunksView, ChunkInfoView};
+use near_primitives::views::{BlockByChunksView, ChunkInfoView, BlockProduction};
 
 use crate::sync::{BlockSync, EpochSync, HeaderSync, StateSync, StateSyncResult};
 use crate::{metrics, SyncStatus};
@@ -111,6 +111,9 @@ pub struct Client {
     /// Last time the head was updated, or our head was rebroadcasted. Used to re-broadcast the head
     /// again to prevent network from stalling if a large percentage of the network missed a block
     last_time_head_progress_made: Instant,
+
+    pub block_production_times: HashMap<BlockHeight, BlockProduction>,
+    pub chunk_production_times: HashMap<(BlockHeight, ShardId), Duration>,
 }
 
 // Debug information about the upcoming block.
@@ -231,6 +234,8 @@ impl Client {
             rs: ReedSolomonWrapper::new(data_parts, parity_parts),
             rebroadcasted_blocks: lru::LruCache::new(NUM_REBROADCAST_BLOCKS),
             last_time_head_progress_made: Clock::instant(),
+            block_production_times: HashMap::new(),
+            chunk_production_times: HashMap::new(),
         })
     }
 
@@ -433,7 +438,7 @@ impl Client {
         let new_chunks = self.shards_mgr.prepare_chunks(&prev_hash);
         warn!(target: "client", "{:?} Producing block at height {}, parent {} @ {}, {} new chunks", validator_signer.validator_id(),
                next_height, prev.height(), format_hash(head.last_block_hash), new_chunks.len());
-
+        
         // If we are producing empty blocks and there are no transactions.
         if !self.config.produce_empty_blocks && new_chunks.is_empty() {
             warn!(target: "client", "Empty blocks, skipping block production");
@@ -502,8 +507,20 @@ impl Client {
         let prev_block = self.chain.get_block(&prev_hash)?;
         let mut chunks = Chain::get_prev_chunk_headers(&*self.runtime_adapter, &prev_block)?;
 
+
+        let now = Instant::now();
+        let chrono_now = chrono::Utc::now();
+        self.block_production_times.insert(next_height, BlockProduction {
+            block_production_time: Some(chrono_now),
+            chunks_collection_time: (0..(chunks.len().clone())).map(|shard_id| {
+                new_chunks.get(&(shard_id.clone() as u64)).and_then(|(_, arrival_time)| {
+                    Some(chrono_now - chrono::Duration::milliseconds(now.duration_since(arrival_time.clone()).as_millis() as i64))
+                })
+            }).collect::<Vec<_>>()
+        });
+
         // Collect new chunks.
-        for (shard_id, mut chunk_header) in new_chunks {
+        for (shard_id, (mut chunk_header, _)) in new_chunks {
             *chunk_header.height_included_mut() = next_height;
             chunks[shard_id as usize] = chunk_header;
         }
@@ -569,7 +586,6 @@ impl Client {
         })?;
 
         metrics::BLOCK_PRODUCED_TOTAL.inc();
-
         Ok(Some(block))
     }
 
@@ -581,6 +597,7 @@ impl Client {
         next_height: BlockHeight,
         shard_id: ShardId,
     ) -> Result<Option<(EncodedShardChunk, Vec<MerklePath>, Vec<Receipt>)>, Error> {
+        let timer = Instant::now();
         let validator_signer = self
             .validator_signer
             .as_ref()
@@ -680,6 +697,7 @@ impl Client {
         );
 
         metrics::CHUNK_PRODUCED_TOTAL.inc();
+        self.chunk_production_times.insert((next_height, shard_id), timer.elapsed());
         Ok(Some((encoded_chunk, merkle_paths, outgoing_receipts)))
     }
 

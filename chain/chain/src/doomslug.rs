@@ -8,7 +8,7 @@ use near_primitives::hash::CryptoHash;
 use near_primitives::time::Clock;
 use near_primitives::types::{AccountId, ApprovalStake, Balance, BlockHeight, BlockHeightDelta};
 use near_primitives::validator_signer::ValidatorSigner;
-use near_primitives::views::ApprovalHistoryEntry;
+use near_primitives::views::{ApprovalHistoryEntry, ApprovalAtHeightStatus};
 use tracing::info;
 
 /// Have that many iterations in the timer instead of `loop` to prevent potential bugs from blocking
@@ -59,6 +59,7 @@ struct DoomslugTip {
 
 struct DoomslugApprovalsTracker {
     witness: HashMap<AccountId, Approval>,
+    arrival_time: HashMap<AccountId, chrono::DateTime<chrono::Utc>>,
     account_id_to_stakes: HashMap<AccountId, (Balance, Balance)>,
     total_stake_this_epoch: Balance,
     approved_stake_this_epoch: Balance,
@@ -137,6 +138,7 @@ impl DoomslugApprovalsTracker {
 
         DoomslugApprovalsTracker {
             witness: Default::default(),
+            arrival_time: Default::default(),
             account_id_to_stakes,
             total_stake_this_epoch,
             total_stake_next_epoch,
@@ -165,6 +167,7 @@ impl DoomslugApprovalsTracker {
         let mut increment_approved_stake = false;
         self.witness.entry(approval.account_id.clone()).or_insert_with(|| {
             increment_approved_stake = true;
+            self.arrival_time.insert(approval.account_id.clone(), chrono::Utc::now());
             approval.clone()
         });
 
@@ -216,6 +219,19 @@ impl DoomslugApprovalsTracker {
             DoomslugBlockProductionReadiness::NotReady
         }
     }
+
+    // Get witnesses together with their arrival time.
+    fn get_witnesses(&self) -> Vec<(String, Option<chrono::DateTime<chrono::Utc>>)> {
+        let foo = self.witness.keys().map(|it| {
+            (it.to_string(), self.arrival_time.get(it).cloned())
+        }).collect::<Vec<_>>();
+        foo
+    }
+
+    fn ready_since(&self) -> Option<Instant> {
+        self.time_passed_threshold
+    }
+
 }
 
 impl DoomslugApprovalsTrackersAtHeight {
@@ -282,6 +298,24 @@ impl DoomslugApprovalsTrackersAtHeight {
             .entry(approval.inner.clone())
             .or_insert_with(|| DoomslugApprovalsTracker::new(account_id_to_stakes, threshold_mode))
             .process_approval(now, approval)
+    }
+
+    pub fn status(&self) -> ApprovalAtHeightStatus {
+        let approvals = self.approval_trackers.iter().map(|tracker| {
+            let witnesses = tracker.1.get_witnesses();
+            witnesses.into_iter().map(|(account_name, approval_time)| {
+                (account_name, (tracker.0.clone(), approval_time))
+            })
+        }).flatten().collect::<HashMap<_, _>>();
+
+        let threshold_approval = self.approval_trackers.iter().filter_map(|(_, tracker)| {
+            tracker.ready_since()
+        }).min().map(|ts| chrono::Utc::now() - chrono::Duration::milliseconds(ts.elapsed().as_millis() as i64));
+
+        
+
+        ApprovalAtHeightStatus { approvals, ready_at: threshold_approval }
+        
     }
 }
 
@@ -498,12 +532,12 @@ impl Doomslug {
         target_height: BlockHeight,
     ) -> HashMap<AccountId, Approval> {
         let hash_or_height = ApprovalInner::new(prev_hash, parent_height, target_height);
-        if let Some(approval_trackers_at_height) = self.approval_tracking.get_mut(&target_height) {
+        if let Some(approval_trackers_at_height) = self.approval_tracking.get(&target_height) {
             let approvals_tracker =
-                approval_trackers_at_height.approval_trackers.remove(&hash_or_height);
+                approval_trackers_at_height.approval_trackers.get(&hash_or_height);
             match approvals_tracker {
                 None => HashMap::new(),
-                Some(approvals_tracker) => approvals_tracker.witness,
+                Some(approvals_tracker) => approvals_tracker.witness.clone(),
             }
         } else {
             HashMap::new()
@@ -532,7 +566,7 @@ impl Doomslug {
         self.timer.started = now;
 
         self.approval_tracking
-            .retain(|h, _| *h > height && *h <= height + MAX_HEIGHTS_AHEAD_TO_STORE_APPROVALS);
+            .retain(|h, _| *h > height - 20 && *h <= height + MAX_HEIGHTS_AHEAD_TO_STORE_APPROVALS);
 
         self.endorsement_pending = true;
         tracing::warn!("doomslug - setting tip to {:?} {:?}", height, block_hash);
@@ -578,6 +612,10 @@ impl Doomslug {
         }
 
         let _ = self.on_approval_message_internal(now, approval, stakes);
+    }
+
+    pub fn approval_status_at_heigth(&self, height:&BlockHeight) -> Option<ApprovalAtHeightStatus> {
+        self.approval_tracking.get(height).and_then(|it| Some(it.status()))
     }
 
     /// Returns whether we can produce a block for this height. The check for whether `me` is the

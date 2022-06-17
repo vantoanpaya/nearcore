@@ -933,7 +933,7 @@ impl ShardsManager {
     pub fn prepare_chunks(
         &mut self,
         prev_block_hash: &CryptoHash,
-    ) -> HashMap<ShardId, ShardChunkHeader> {
+    ) -> HashMap<ShardId, (ShardChunkHeader, Instant)> {
         self.encoded_chunks.get_chunk_headers_for_block(prev_block_hash)
     }
 

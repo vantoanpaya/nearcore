@@ -3,6 +3,7 @@
 //! These types should only change when we cannot avoid this. Thus, when the counterpart internal
 //! type gets changed, the view should preserve the old shape and only re-map the necessary bits
 //! from the source structure in the relevant `From<SourceStruct>` impl.
+use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
 
@@ -16,7 +17,7 @@ use crate::account::{AccessKey, AccessKeyPermission, Account, FunctionCallPermis
 use crate::block::{Block, BlockHeader, Tip};
 use crate::block_header::{
     BlockHeaderInnerLite, BlockHeaderInnerRest, BlockHeaderInnerRestV2, BlockHeaderInnerRestV3,
-    BlockHeaderV1, BlockHeaderV2, BlockHeaderV3,
+    BlockHeaderV1, BlockHeaderV2, BlockHeaderV3, ApprovalInner,
 };
 use crate::challenge::{Challenge, ChallengesResult};
 use crate::contract::ContractCode;
@@ -450,19 +451,44 @@ pub struct ApprovalHistoryEntry {
 }
 
 
+
+
+#[cfg_attr(feature = "deepsize_feature", derive(deepsize::DeepSizeOf))]
+#[derive(Serialize, Debug, Default)]
+pub struct ChunkProduction {
+    pub chunk_production_time: Option<DateTime<chrono::Utc>>,
+    pub chunk_production_duration_millis: Option<u64>
+}
+#[cfg_attr(feature = "deepsize_feature", derive(deepsize::DeepSizeOf))]
+#[derive(Serialize, Debug, Default, Clone)]
+pub struct BlockProduction {
+    pub chunks_collection_time: Vec<Option<DateTime<chrono::Utc>>>, 
+    pub block_production_time: Option<DateTime<chrono::Utc>> ,
+}
+
+#[cfg_attr(feature = "deepsize_feature", derive(deepsize::DeepSizeOf))]
+#[derive(Serialize, Debug, Default)]
+pub struct ProductionAtHeight {
+    pub approvals: Option<ApprovalAtHeightStatus>,
+    pub block_production: Option<BlockProduction>,
+    pub chunk_production: HashMap<u64, ChunkProduction>,
+}
 #[cfg_attr(feature = "deepsize_feature", derive(deepsize::DeepSizeOf))]
 #[derive(Serialize, Debug)]
-pub enum UpcomingProductionEntry {
-    Block,
-    Chunk,
+pub struct ApprovalAtHeightStatus {
+    pub approvals: HashMap<String, (ApprovalInner, Option<DateTime<chrono::Utc>>)>,
+    pub ready_at: Option<DateTime<chrono::Utc>>,
 }
 
 #[cfg_attr(feature = "deepsize_feature", derive(deepsize::DeepSizeOf))]
 #[derive(Serialize, Debug)]
 pub struct ValidatorStatus {
-    pub is_validator: bool,
+    pub validator_name: Option<String>,
+    pub shards: u64,
+    pub head_height: u64,
+    pub validators: Option<Vec<(String, u64)>>,
     pub approval_history: Vec<ApprovalHistoryEntry>,
-    pub upcoming_production: Vec<UpcomingProductionEntry>,
+    pub upcoming_production: HashMap<BlockHeight, ProductionAtHeight>,
 }
 
 
