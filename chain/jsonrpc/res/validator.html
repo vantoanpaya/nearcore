@@ -87,7 +87,9 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <script>
-        function drawApprovals(approval_map, missing_count, context) {
+        // draw the colorful bar with the approvals.
+        // approval_map should contain the mapping from 'skips' (int) to number of votes, skip == 0 means that this is an endorsement.
+        function drawApprovals(approvalMap, missingCount, context) {
             var colors = {
 
                 0: { "bg": 'rgba(117, 240, 158, 0.2)', "border": 'rgba(117, 240, 158, 1.0)' },
@@ -98,18 +100,16 @@
             };
 
             let datasets = [];
-            Array.from(approval_map.keys()).sort().forEach(element => {
+            Array.from(approvalMap.keys()).sort().forEach(element => {
                 if (element == 0) {
                     // This is endorsement
-                    label = "endorsement";
+                    label = "Endorsement";
                 } else {
                     label = "Skip " + element;
                 }
-
-
                 datasets.push({
                     label: label,
-                    data: [approval_map.get(element)],
+                    data: [approvalMap.get(element)],
                     backgroundColor: [colors[element % 5]["bg"]],
                     borderColor: [colors[element % 5]["border"]],
                     borderWidth: 1,
@@ -117,7 +117,7 @@
             });
             datasets.push({
                 label: 'Missing',
-                data: [missing_count],
+                data: [missingCount],
                 backgroundColor: ['rgba(128, 128, 128, 0.2)'],
                 borderColor: ['rgba(128, 128, 128, 1.0)'],
                 borderWidth: 1,
@@ -158,9 +158,9 @@
             }
 
             let head = data.status_response.ValidatorStatus.head_height;
-
             let approvalHistory = data.status_response.ValidatorStatus.approval_history;
 
+            // Updates the bottom table with the history of approvals created.
             approvalHistory.reverse().forEach((element, index) => {
                 let row =
                     $('<tr>')
@@ -192,10 +192,7 @@
             });
 
             let all_validators = data.status_response.ValidatorStatus.validators;
-
-
             let validators_size = all_validators.length;
-
 
             $('.js-thead-production').append($("<th>").text("Approvals"));
             for (let i = 0; i < validators_size; i += 1) {
@@ -222,6 +219,7 @@
                 let fastestValidator = null;
                 let thresholdApprovalTime = null;
 
+                // In case the current validator has received any approvals for this block.
                 if (entry.approvals != null) {
                     let approvals = entry.approvals.approvals;
                     let approvalsMap = new Map();
@@ -251,19 +249,12 @@
 
                     });
 
-                    let canvas = $('<canvas>');
-                    canvas.height(100);
+                    let canvas = $('<canvas>').height(100);
                     drawApprovals(approvalsMap, missingCount, canvas[0].getContext('2d'));
-                    let div = $('<div>');
-                    div.width("200px");
-                    div.append(canvas);
-
-                    row.append($('<td>').append(div));
-
+                    row.append($('<td>').append($('<div>').width("200px").append(canvas)));
 
                     all_validators.forEach(entry => {
                         let validator = entry[0];
-
                         let cell = $('<td>');
                         if (approvals[validator] == null) {
                             cell.addClass('validator-missing');
@@ -283,8 +274,6 @@
                         }
                         row.append(cell);
                     });
-
-
                 } else {
                     row.append($('<td>'));
                     all_validators.forEach(validator => {
@@ -293,7 +282,7 @@
                 }
 
 
-
+                // In case the current validator is responsible for producting this block.
                 if (entry.block_production != null) {
                     let block_production = entry.block_production;
                     let content = "";
@@ -330,7 +319,6 @@
                             }
                         }
 
-
                         if (entry.chunk_production[i] != null) {
                             chunk_cell.append("own production <br> F + " + (time_delta ?? "-") + " ms <br><b>T +" + (time_since_threshold ?? "-") + "ms </b> <br>Production duration: " + (entry.chunk_production[i].chunk_production_duration_millis ?? "-") + " ms");
                         } else {
@@ -348,14 +336,10 @@
                         }
                     }
                 }
-
                 $('.js-tbody-production').append(row);
-
             });
 
         };
-
-
 
 
         $(document).ready(() => {
@@ -363,7 +347,7 @@
             $('span').text("Loading...");
             $.ajax({
                 type: "GET",
-                url: "http://localhost:3030/debug/api/validator_status",
+                url: "/debug/api/validator_status",
                 success: data => {
                     process_validator_status(data);
                 },
