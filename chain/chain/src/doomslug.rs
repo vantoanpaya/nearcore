@@ -419,7 +419,7 @@ impl Doomslug {
             let skip_delay =
                 self.timer.get_delay(self.timer.height.saturating_sub(self.largest_final_height));
 
-            tracing::warn!("Doomslug timer, skip delay: {:?} started: {:?} endorsement: {:?} height: {:?} last endorsement: {:?}",
+            tracing::debug!("Doomslug timer, skip delay: {:?} started: {:?} endorsement: {:?} height: {:?} last endorsement: {:?}",
         skip_delay, self.timer.started.elapsed(), self.endorsement_pending, self.timer.height, self.timer.last_endorsement_sent.elapsed());
 
             // The `endorsement_delay` is time to send approval to the block producer at `timer.height`,

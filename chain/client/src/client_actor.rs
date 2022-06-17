@@ -926,12 +926,10 @@ impl ClientActor {
         if let Some(signer) = &self.client.validator_signer {
             let validator_id = signer.validator_id().to_string();
 
+            let max_height = std::cmp::max(head.height + 10, self.client.doomslug.get_largest_target_height());
             // Look 50 blocks ahead to see what blocks we're about to produce.
-            for delta in 0..20 {
-                let height = head.height.saturating_sub(10) + delta;
-                
+            for height in head.height.saturating_sub(10)..=max_height {
                 let mut production = ProductionAtHeight::default();
-
 
                 production.approvals = self.client.doomslug.approval_status_at_heigth(&height);
 
