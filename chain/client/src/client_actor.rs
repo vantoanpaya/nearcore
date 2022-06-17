@@ -76,6 +76,9 @@ const HEAD_STALL_MULTIPLIER: u32 = 4;
 const DEBUG_BLOCKS_TO_FETCH: u32 = 50;
 const DEBUG_EPOCHS_TO_FETCH: u32 = 5;
 
+// How many old blocks (before HEAD) should be shown in debug page.
+const DEBUG_PRODUCTION_OLD_BLOCKS_TO_SHOW: u64 = 10;
+
 #[derive(Message)]
 #[rtype(result = "()")]
 pub struct ApplyChunksDoneMessage;
@@ -915,31 +918,28 @@ impl ClientActor {
     }
 
 
+    /// Returns debugging information about the validator - including things like which approvals were received, which blocks/chunks will be 
+    /// produced and some detailed timing information.
     fn get_validator_status(
         &mut self,
     ) -> Result<ValidatorStatus, near_chain_primitives::Error> {
-
         let head = self.client.chain.head()?;
-
-        let mut foo: HashMap<BlockHeight, ProductionAtHeight> = HashMap::new();
+        let mut production_map: HashMap<BlockHeight, ProductionAtHeight> = HashMap::new();
 
         if let Some(signer) = &self.client.validator_signer {
             let validator_id = signer.validator_id().to_string();
 
-            let max_height = std::cmp::max(head.height + 10, self.client.doomslug.get_largest_target_height());
-            // Look 50 blocks ahead to see what blocks we're about to produce.
-            for height in head.height.saturating_sub(10)..=max_height {
+            let max_height = std::cmp::max(head.height + DEBUG_PRODUCTION_OLD_BLOCKS_TO_SHOW, self.client.doomslug.get_largest_target_height());
+            for height in head.height.saturating_sub(DEBUG_PRODUCTION_OLD_BLOCKS_TO_SHOW)..=max_height {
                 let mut production = ProductionAtHeight::default();
-
-                production.approvals = self.client.doomslug.approval_status_at_heigth(&height);
-
+                production.approvals = self.client.doomslug.approval_status_at_height(&height);
 
                 let block_producer = self
-                .client
-                .runtime_adapter
-                .get_block_producer(&head.epoch_id, height)
-                .map(|f| f.to_string())
-                .unwrap_or_default();
+                    .client
+                    .runtime_adapter
+                    .get_block_producer(&head.epoch_id, height)
+                    .map(|f| f.to_string())
+                    .unwrap_or_default();
 
                 if block_producer == validator_id {                    
                     production.block_production = self.client.block_production_times.get(&height).cloned().or(Some(BlockProduction::default()));
@@ -954,12 +954,9 @@ impl ClientActor {
                         });
                     }
                 }
-                foo.insert(height, production);
+                production_map.insert(height, production);
             }
         }
-
-        
-
 
         Ok(ValidatorStatus{
             validator_name: self.client.validator_signer.as_ref().map(|signer| signer.validator_id().to_string()),
@@ -971,7 +968,7 @@ impl ClientActor {
             head_height: head.height,
             shards: self.client.runtime_adapter.num_shards(&head.epoch_id).unwrap_or_default(),
             approval_history: self.client.doomslug.get_approval_history(),
-            upcoming_production: foo,
+            upcoming_production: production_map,
         })
 
     }
@@ -1320,7 +1317,6 @@ impl ClientActor {
                 latest_known.height - epoch_start_height < EPOCH_START_INFO_BLOCKS
             };
 
-        tracing::warn!("Considering block production between {} and {}", latest_known.height + 1, self.client.doomslug.get_largest_height_crossing_threshold());
         // We try to produce block for multiple heights (up to the highest height for which we've seen 2/3 of approvals).
         for height in
             latest_known.height + 1..=self.client.doomslug.get_largest_height_crossing_threshold()
@@ -1760,7 +1756,7 @@ impl ClientActor {
 
         if is_syncing {
             if full_peer_info.chain_info.height <= head.height {
-                warn!(target: "client", "Sync: synced at {} [{}], {}, highest height peer: {}",
+                info!(target: "client", "Sync: synced at {} [{}], {}, highest height peer: {}",
                       head.height, format_hash(head.last_block_hash),
                       full_peer_info.peer_info.id, full_peer_info.chain_info.height
                 );
@@ -1770,7 +1766,7 @@ impl ClientActor {
             if full_peer_info.chain_info.height
                 > head.height + self.client.config.sync_height_threshold
             {
-                warn!(
+                info!(
                     target: "client",
                     "Sync: height: {}, peer id/height: {}/{}, enabling sync",
                     head.height,

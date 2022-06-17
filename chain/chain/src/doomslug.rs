@@ -22,6 +22,10 @@ const MAX_TIMER_ITERS: usize = 20;
 /// thus 10_000 heights in practice will mean on the order of one hundred entries.
 const MAX_HEIGHTS_AHEAD_TO_STORE_APPROVALS: BlockHeight = 10_000;
 
+// Number of blocks (before head) for which to keep the history of approvals (for debugging).
+const MAX_HEIGHTS_BEFORE_TO_STORE_APPROVALS: u64 = 20;
+
+// Maximum amount of historical approvals that we'd keep for debugging purposes.
 const MAX_HISTORY_SIZE: usize = 1000;
 
 /// The threshold for doomslug to create a block.
@@ -110,6 +114,8 @@ pub struct Doomslug {
     ///    but for many tests we use `NoApprovals` to invoke more forkfulness
     threshold_mode: DoomslugThresholdMode,
 
+    /// Approvals that were created by this doomslug instance (for debugging only).
+    /// Keeps up to MAX_HISTORY_SIZE entries.
     history: VecDeque<ApprovalHistoryEntry>,
 }
 
@@ -222,12 +228,13 @@ impl DoomslugApprovalsTracker {
 
     // Get witnesses together with their arrival time.
     fn get_witnesses(&self) -> Vec<(String, Option<chrono::DateTime<chrono::Utc>>)> {
-        let foo = self.witness.keys().map(|it| {
+        self.witness.keys().map(|it| {
             (it.to_string(), self.arrival_time.get(it).cloned())
-        }).collect::<Vec<_>>();
-        foo
+        }).collect::<Vec<_>>()
     }
 
+    /// If a given Tracker is ready (the Threshold passed), returns the moment when it was ready the first time.
+    /// Returns None, if Tracker is not ready yet.
     fn ready_since(&self) -> Option<Instant> {
         self.time_passed_threshold
     }
@@ -300,6 +307,8 @@ impl DoomslugApprovalsTrackersAtHeight {
             .process_approval(now, approval)
     }
 
+    /// Returns the current approvals status for the trackers at this height.
+    /// Status contains information about which account voted (and for what) and whether the doomslug voting threshold was reached.
     pub fn status(&self) -> ApprovalAtHeightStatus {
         let approvals = self.approval_trackers.iter().map(|tracker| {
             let witnesses = tracker.1.get_witnesses();
@@ -313,9 +322,7 @@ impl DoomslugApprovalsTrackersAtHeight {
         }).min().map(|ts| chrono::Utc::now() - chrono::Duration::milliseconds(ts.elapsed().as_millis() as i64));
 
         
-
         ApprovalAtHeightStatus { approvals, ready_at: threshold_approval }
-        
     }
 }
 
@@ -384,11 +391,13 @@ impl Doomslug {
         self.timer.started
     }
 
+    /// Returns currently available approval history.
     pub fn get_approval_history(&self) -> Vec<ApprovalHistoryEntry> {
        self.history.iter().map(|x| x.clone()).collect::<Vec<_>>()
     }
 
 
+    /// Adds new approval to the history.
     fn update_history(&mut self, entry: ApprovalHistoryEntry) {
         while self.history.len() >= MAX_HISTORY_SIZE {
             self.history.pop_front();
@@ -415,12 +424,8 @@ impl Doomslug {
     pub fn process_timer(&mut self, cur_time: Instant) -> Vec<Approval> {
         let mut ret = vec![];
         for _ in 0..MAX_TIMER_ITERS {
-            
             let skip_delay =
                 self.timer.get_delay(self.timer.height.saturating_sub(self.largest_final_height));
-
-            tracing::debug!("Doomslug timer, skip delay: {:?} started: {:?} endorsement: {:?} height: {:?} last endorsement: {:?}",
-        skip_delay, self.timer.started.elapsed(), self.endorsement_pending, self.timer.height, self.timer.last_endorsement_sent.elapsed());
 
             // The `endorsement_delay` is time to send approval to the block producer at `timer.height`,
             // while the `skip_delay` is the time before sending the approval to BP of `timer_height + 1`,
@@ -480,7 +485,6 @@ impl Doomslug {
     }
 
     fn create_approval(&self, target_height: BlockHeight) -> Option<Approval> {
-        tracing::warn!("Creating approval from {:?} to {:?}", self.tip.height, target_height);
         self.signer.as_ref().map(|signer| {
             Approval::new(self.tip.block_hash, self.tip.height, target_height, &**signer)
         })
@@ -525,8 +529,8 @@ impl Doomslug {
             && (approved_stake2 > threshold2 || threshold2 == 0)
     }
 
-    pub fn remove_witness(
-        &mut self,
+    pub fn get_witness(
+        &self,
         prev_hash: &CryptoHash,
         parent_height: BlockHeight,
         target_height: BlockHeight,
@@ -566,10 +570,9 @@ impl Doomslug {
         self.timer.started = now;
 
         self.approval_tracking
-            .retain(|h, _| *h > height.saturating_sub(20) && *h <= height + MAX_HEIGHTS_AHEAD_TO_STORE_APPROVALS);
+            .retain(|h, _| *h > height.saturating_sub(MAX_HEIGHTS_BEFORE_TO_STORE_APPROVALS) && *h <= height + MAX_HEIGHTS_AHEAD_TO_STORE_APPROVALS);
 
         self.endorsement_pending = true;
-        tracing::warn!("doomslug - setting tip to {:?} {:?}", height, block_hash);
     }
 
     /// Records an approval message, and return whether the block has passed the threshold / ready
@@ -614,7 +617,10 @@ impl Doomslug {
         let _ = self.on_approval_message_internal(now, approval, stakes);
     }
 
-    pub fn approval_status_at_heigth(&self, height:&BlockHeight) -> Option<ApprovalAtHeightStatus> {
+    /// Gets the current status of approvals for a given height.
+    /// It will only work for heights that we have in memory, that is that are not older than MAX_HEIGHTS_BEFORE_TO_STORE_APPROVALS
+    /// blocks from the head.
+    pub fn approval_status_at_height(&self, height:&BlockHeight) -> Option<ApprovalAtHeightStatus> {
         self.approval_tracking.get(height).and_then(|it| Some(it.status()))
     }
 

@@ -66,6 +66,9 @@ pub const EPOCH_SYNC_PEER_TIMEOUT: Duration = Duration::from_millis(10);
 /// number of blocks at the epoch start for which we will log more detailed info
 pub const EPOCH_START_INFO_BLOCKS: u64 = 500;
 
+/// Number of blocks (and chunks) for which to keep the detailed timing information for debug purposes.
+pub const PRODUCTION_TIMES_CACHE_SIZE: usize = 1000;
+
 pub struct Client {
     /// Adversarial controls
     #[cfg(feature = "test_features")]
@@ -112,8 +115,10 @@ pub struct Client {
     /// again to prevent network from stalling if a large percentage of the network missed a block
     last_time_head_progress_made: Instant,
 
-    pub block_production_times: HashMap<BlockHeight, BlockProduction>,
-    pub chunk_production_times: HashMap<(BlockHeight, ShardId), Duration>,
+    /// Block and chunk production timing information.
+    /// used only for debug purposes.
+    pub block_production_times: lru::LruCache<BlockHeight, BlockProduction>,
+    pub chunk_production_times: lru::LruCache<(BlockHeight, ShardId), Duration>,
 }
 
 // Debug information about the upcoming block.
@@ -234,8 +239,8 @@ impl Client {
             rs: ReedSolomonWrapper::new(data_parts, parity_parts),
             rebroadcasted_blocks: lru::LruCache::new(NUM_REBROADCAST_BLOCKS),
             last_time_head_progress_made: Clock::instant(),
-            block_production_times: HashMap::new(),
-            chunk_production_times: HashMap::new(),
+            block_production_times: lru::LruCache::new(PRODUCTION_TIMES_CACHE_SIZE),
+            chunk_production_times: lru::LruCache::new(PRODUCTION_TIMES_CACHE_SIZE),
         })
     }
 
@@ -445,7 +450,7 @@ impl Client {
             return Ok(None);
         }
 
-        let mut approvals_map = self.doomslug.remove_witness(&prev_hash, prev_height, next_height);
+        let mut approvals_map = self.doomslug.get_witness(&prev_hash, prev_height, next_height);
 
         // At this point, the previous epoch hash must be available
         let epoch_id = self
@@ -508,13 +513,12 @@ impl Client {
         let mut chunks = Chain::get_prev_chunk_headers(&*self.runtime_adapter, &prev_block)?;
 
 
-        let now = Instant::now();
-        let chrono_now = chrono::Utc::now();
-        self.block_production_times.insert(next_height, BlockProduction {
-            block_production_time: Some(chrono_now),
+        // Add debug information about the block production (and info on when did the chunks arrive).
+        self.block_production_times.put(next_height, BlockProduction {
+            block_production_time: Some(chrono::Utc::now()),
             chunks_collection_time: (0..(chunks.len().clone())).map(|shard_id| {
                 new_chunks.get(&(shard_id.clone() as u64)).and_then(|(_, arrival_time)| {
-                    Some(chrono_now - chrono::Duration::milliseconds(now.duration_since(arrival_time.clone()).as_millis() as i64))
+                    Some(arrival_time.clone())
                 })
             }).collect::<Vec<_>>()
         });
@@ -698,7 +702,7 @@ impl Client {
         );
 
         metrics::CHUNK_PRODUCED_TOTAL.inc();
-        self.chunk_production_times.insert((next_height, shard_id), timer.elapsed());
+        self.chunk_production_times.put((next_height, shard_id), timer.elapsed());
         Ok(Some((encoded_chunk, merkle_paths, outgoing_receipts)))
     }
 
