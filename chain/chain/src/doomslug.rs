@@ -566,7 +566,7 @@ impl Doomslug {
         self.timer.started = now;
 
         self.approval_tracking
-            .retain(|h, _| *h > height - 20 && *h <= height + MAX_HEIGHTS_AHEAD_TO_STORE_APPROVALS);
+            .retain(|h, _| *h > height.saturating_sub(20) && *h <= height + MAX_HEIGHTS_AHEAD_TO_STORE_APPROVALS);
 
         self.endorsement_pending = true;
         tracing::warn!("doomslug - setting tip to {:?} {:?}", height, block_hash);
