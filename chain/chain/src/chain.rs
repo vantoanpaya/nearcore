@@ -1870,7 +1870,6 @@ impl Chain {
             height = block_height)
         .entered();
 
-        warn!("Starting to process block at heigth {}", block_height);
         // 1) preprocess the block where we verify that the block is valid and ready to be processed
         //    No chain updates are applied at this step.
         let preprocess_res = self.preprocess_block(
@@ -2079,7 +2078,7 @@ impl Chain {
         // see if the block is already in processing or if there are too many blocks being processed
         self.blocks_in_processing.add_dry_run(block.hash())?;
 
-        warn!(target: "chain", num_approvals = block.header().num_approvals(), "Preprocess block");
+        debug!(target: "chain", num_approvals = block.header().num_approvals(), "Preprocess block");
 
         // Check that we know the epoch of the block before we try to get the header
         // (so that a block from unknown epoch doesn't get marked as an orphan)
@@ -2233,7 +2232,6 @@ impl Chain {
                 ApplyChunksMode::NotCaughtUp,
             )?
         };
-        warn!("Block @{} has {} chunks to process", block.header().height(), apply_chunk_work.len());
 
         Ok((
             apply_chunk_work,
@@ -4241,7 +4239,6 @@ impl<'a> ChainUpdate<'a> {
             let shard_uid =
                 self.runtime_adapter.shard_id_to_uid(shard_id, block.header().epoch_id())?;
             let is_new_chunk = chunk_header.height_included() == block.header().height();
-            warn!("Shard {} Chunk {:?} - height {} vs block height {} is new: {}", shard_id, chunk_header.chunk_hash(), chunk_header.height_included(), block.header().height(), is_new_chunk);
             if should_apply_transactions {
                 if is_new_chunk {
                     let prev_chunk_height_included = prev_chunk_header.height_included();
@@ -4347,12 +4344,11 @@ impl<'a> ChainUpdate<'a> {
                     let states_to_patch = self.states_to_patch.take();
 
                     result.push(Box::new(move |parent_span| -> Result<ApplyChunkResult, Error> {
-                        let _span = tracing::warn_span!(
+                        let _span = tracing::debug_span!(
                             target: "chain",
                             parent: parent_span,
                             "new_chunk",
-                            shard_id,
-                            "{}", format!("{:?}", chunk.chunk_hash()))
+                            shard_id)
                         .entered();
                         let _timer = CryptoHashTimer::new(chunk.chunk_hash().0);
                         match runtime_adapter.apply_transactions(

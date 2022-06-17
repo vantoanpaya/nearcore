@@ -436,12 +436,12 @@ impl Client {
         }
 
         let new_chunks = self.shards_mgr.prepare_chunks(&prev_hash);
-        warn!(target: "client", "{:?} Producing block at height {}, parent {} @ {}, {} new chunks", validator_signer.validator_id(),
+        debug!(target: "client", "{:?} Producing block at height {}, parent {} @ {}, {} new chunks", validator_signer.validator_id(),
                next_height, prev.height(), format_hash(head.last_block_hash), new_chunks.len());
         
         // If we are producing empty blocks and there are no transactions.
         if !self.config.produce_empty_blocks && new_chunks.is_empty() {
-            warn!(target: "client", "Empty blocks, skipping block production");
+            debug!(target: "client", "Empty blocks, skipping block production");
             return Ok(None);
         }
 
@@ -586,6 +586,7 @@ impl Client {
         })?;
 
         metrics::BLOCK_PRODUCED_TOTAL.inc();
+
         Ok(Some(block))
     }
 
@@ -623,7 +624,7 @@ impl Client {
             }
         }
 
-        warn!(
+        debug!(
             target: "client",
             "Producing chunk at height {} for shard {}, I'm {}",
             next_height,
@@ -684,7 +685,7 @@ impl Client {
             protocol_version,
         )?;
 
-        warn!(
+        debug!(
             target: "client",
             "Produced chunk at height {} for shard {} with {} txs and {} receipts, I'm {}, chunk_hash: {} prev_block_hash: {}",
             next_height,
@@ -1181,10 +1182,8 @@ impl Client {
                 self.collect_block_approval(&approval, approval_type);
             }
         }
-        tracing::warn!("Post processing a block {:?} {:?}", block.header().hash(), block.header().height());
 
         if status.is_new_head() {
-            warn!("We have a new HEAD: {:?} {:?}", block.header().hash(), block.header().height());
             self.shards_mgr.update_largest_seen_height(block.header().height());
             let last_final_block = block.header().last_final_block();
             let last_finalized_height = if last_final_block == &CryptoHash::default() {

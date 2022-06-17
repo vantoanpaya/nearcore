@@ -1521,7 +1521,6 @@ lazy_static_include::lazy_static_include_str! {
     VALIDATOR_HTML => "res/validator.html",
 }
 
-
 #[get("/debug")]
 async fn debug_html() -> actix_web::Result<impl actix_web::Responder> {
     Ok(HttpResponse::Ok().body(*DEBUG_HTML))
