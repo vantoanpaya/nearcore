@@ -1518,7 +1518,9 @@ lazy_static_include::lazy_static_include_str! {
     EPOCH_INFO_HTML => "res/epoch_info.html",
     CHAIN_N_CHUNK_INFO_HTML => "res/chain_n_chunk_info.html",
     SYNC_HTML => "res/sync.html",
+    VALIDATOR_HTML => "res/validator.html",
 }
+
 
 #[get("/debug")]
 async fn debug_html() -> actix_web::Result<impl actix_web::Responder> {
@@ -1537,6 +1539,7 @@ async fn display_debug_html(
         "epoch_info" => Some(*EPOCH_INFO_HTML),
         "chain_n_chunk_info" => Some(*CHAIN_N_CHUNK_INFO_HTML),
         "sync" => Some(*SYNC_HTML),
+        "validator" => Some(*VALIDATOR_HTML),
         _ => None,
     };
 
