@@ -12,6 +12,7 @@ use crate::time;
 use actix::Message;
 use borsh::{BorshDeserialize, BorshSerialize};
 use near_crypto::SecretKey;
+use near_crypto::PublicKey;
 use near_primitives::block::{Block, BlockHeader, GenesisId};
 use near_primitives::hash::CryptoHash;
 use near_primitives::network::{AnnounceAccount, PeerId};
@@ -24,6 +25,8 @@ use std::fmt::Debug;
 use std::hash::Hash;
 use std::net::SocketAddr;
 use tokio::net::TcpStream;
+use std::collections::HashMap;
+use std::sync::Arc;
 
 /// Exported types, which are part of network protocol.
 pub use crate::network_protocol::{
@@ -319,6 +322,31 @@ pub enum NetworkViewClientMessages {
     AnnounceAccount(Vec<(AnnounceAccount, Option<EpochId>)>),
 }
 
+// Network-relevant data about the epoch.
+#[derive(Debug,Clone)]
+pub struct EpochInfo {
+    pub id: EpochId,
+    // Public keys of accounts participating in the BFT consensus.
+    // It currently includes "block producers", "chunk producers" and approvers.
+    // They are collectively known as "validators".
+    // Peers acting on behalf of these accounts have a higher
+    // priority on the NEAR network than other peers.
+    pub priority_accounts: HashMap<AccountId,PublicKey>,
+}
+
+/// Network-relevant data about the chain.
+// TODO(gprusak): it is more like node info, or sth.
+#[derive(Debug,Clone)]
+pub struct ChainInfo {
+    pub genesis_id: GenesisId,
+    pub tracked_shards: Vec<ShardId>,
+    pub archival: bool,
+
+    pub height: BlockHeight,
+    pub this_epoch: Arc<EpochInfo>,
+    pub next_epoch: Arc<EpochInfo>,
+}
+
 #[derive(Debug, actix::MessageResponse)]
 pub enum NetworkViewClientResponses {
     /// Transaction execution outcome
@@ -332,12 +360,7 @@ pub enum NetworkViewClientResponses {
     /// Headers response.
     BlockHeaders(Vec<BlockHeader>),
     /// Chain information.
-    ChainInfo {
-        genesis_id: GenesisId,
-        height: BlockHeight,
-        tracked_shards: Vec<ShardId>,
-        archival: bool,
-    },
+    GetChainInfo(ChainInfo), 
     /// Response to state request.
     StateResponse(Box<StateResponseInfo>),
     /// Valid announce accounts.
@@ -384,7 +407,6 @@ mod tests {
     #[test]
     fn test_struct_size() {
         assert_size!(PeerInfo);
-        assert_size!(PeerChainInfoV2);
         assert_size!(AnnounceAccount);
         assert_size!(Ping);
         assert_size!(Pong);

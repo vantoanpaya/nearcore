@@ -1,5 +1,6 @@
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::collections::HashMap;
 use std::time::Duration;
 
 use actix::actors::mocker::Mocker;
@@ -17,9 +18,11 @@ use near_network::test_utils::{
 use near_network::types::NetworkClientResponses;
 use near_network::PeerManagerActor;
 use near_network_primitives::types::{
+    ChainInfo, EpochInfo,
     NetworkConfig, NetworkViewClientMessages, NetworkViewClientResponses,
 };
 use near_store::test_utils::create_test_store;
+use near_primitives::types::EpochId;
 
 type ClientMock = Mocker<ClientActor>;
 type ViewClientMock = Mocker<ViewClientActor>;
@@ -36,12 +39,15 @@ fn make_peer_manager(seed: &str, port: u16, boot_nodes: Vec<(&str, u16)>) -> Pee
         let msg = msg.downcast_ref::<NetworkViewClientMessages>().unwrap();
         match msg {
             NetworkViewClientMessages::GetChainInfo => {
-                Box::new(Some(NetworkViewClientResponses::ChainInfo {
+                Box::new(Some(NetworkViewClientResponses::GetChainInfo(ChainInfo{
                     genesis_id: Default::default(),
-                    height: 1,
                     tracked_shards: vec![],
                     archival: false,
-                }))
+
+                    height: 1,
+                    this_epoch: Arc::new(EpochInfo{id:EpochId::default(), priority_accounts: HashMap::new()}),
+                    next_epoch: Arc::new(EpochInfo{id:EpochId::default(), priority_accounts: HashMap::new()}),
+                })))
             }
             _ => Box::new(Some(NetworkViewClientResponses::NoResponse)),
         }

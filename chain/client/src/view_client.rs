@@ -8,7 +8,7 @@ use std::collections::{HashMap, VecDeque};
 use std::hash::Hash;
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
-
+use anyhow::{Context as _};
 use actix::{Actor, Addr, Handler, SyncArbiter, SyncContext};
 use tracing::{debug, error, info, trace, warn};
 
@@ -33,6 +33,7 @@ use near_network_primitives::types::NetworkAdversarialMessage;
 use near_network_primitives::types::{
     NetworkViewClientMessages, NetworkViewClientResponses, ReasonForBan, StateResponseInfo,
     StateResponseInfoV1, StateResponseInfoV2,
+    ChainInfo, EpochInfo,
 };
 use near_performance_metrics_macros::{perf, perf_with_debug};
 use near_primitives::block::{Block, BlockHeader, GenesisId, Tip};
@@ -89,6 +90,12 @@ pub struct ViewClientActor {
     /// Validator account (if present).
     validator_account_id: Option<AccountId>,
     chain: Chain,
+    /// Cached chain info to serve to PeerManager.
+    /// It allows to skip recomputing parts of it and
+    /// ensures that we always return a valid thing, even during transient IO errors.
+    /// TODO(gprusak): this cache is per ViewClientActor, so there will be redundancy AND
+    /// there is no strong guarantee on responses being monotone.
+    chain_info: ChainInfo, 
     runtime_adapter: Arc<dyn RuntimeAdapter>,
     network_adapter: Arc<dyn PeerManagerAdapter>,
     pub config: ClientConfig,
@@ -128,10 +135,30 @@ impl ViewClientActor {
             DoomslugThresholdMode::TwoThirds,
             !config.archive,
         )?;
+        let genesis = chain.genesis();
+        let chain_info = ChainInfo {
+            genesis_id: GenesisId {
+                chain_id: config.chain_id.clone(),
+                hash: *genesis.hash(),
+            },
+            height: genesis.height(),
+            // TODO: call runtime_adapter to extract the initial set of validators.
+            this_epoch: Arc::new(EpochInfo {
+                id: genesis.epoch_id().clone(),
+                priority_accounts: HashMap::default(),
+            }),
+            next_epoch: Arc::new(EpochInfo {
+                id: genesis.next_epoch_id().clone(),
+                priority_accounts: HashMap::default(),
+            }),
+            tracked_shards: config.tracked_shards.clone(),
+            archival: config.archive,
+        };
         Ok(ViewClientActor {
             adv,
             validator_account_id,
             chain,
+            chain_info,
             runtime_adapter,
             network_adapter,
             config,
@@ -504,6 +531,48 @@ impl ViewClientActor {
         }
         cache.push_back(now);
         true
+    }
+
+    fn get_chain_info(&mut self) -> ChainInfo {
+        match (|| -> anyhow::Result<ChainInfo> {
+            // Start with the cached self.chain_info. We will update the outdated parts.
+            let mut chain_info = self.chain_info.clone();
+
+            let head = self.chain.head().context("Cannot retrieve chain head")?;
+            chain_info.height = self.get_height(&head);
+
+            // convert config tracked shards
+            // runtime will track all shards if config tracked shards is not empty
+            // https://github.com/near/nearcore/issues/4930
+            chain_info.tracked_shards = if self.config.tracked_shards.is_empty() {
+                vec![]
+            } else {
+                let num_shards = self.runtime_adapter.num_shards(&head.epoch_id).context("Cannot retrieve num shards")?; 
+                (0..num_shards).collect()
+            };
+
+            if chain_info.this_epoch.id != head.epoch_id {
+                let info = self.runtime_adapter
+                    .get_validator_info(ValidatorInfoIdentifier::EpochId(head.epoch_id.clone()))
+                    .context("runtime_adapter.get_validator_info()")?;
+                chain_info.this_epoch = Arc::new(EpochInfo {
+                    id: head.epoch_id,
+                    priority_accounts: info.current_validators.into_iter().map(|v|(v.account_id,v.public_key)).collect(),
+                });
+                chain_info.next_epoch = Arc::new(EpochInfo {
+                    id: head.next_epoch_id,
+                    priority_accounts: info.next_validators.into_iter().map(|v|(v.account_id,v.public_key)).collect(),
+                });
+            }
+
+            Ok(chain_info)
+        })() {
+            // update self.chain_info iff all the required data has been fetched successfully.
+            Ok(chain_info) => { self.chain_info = chain_info; }
+            // otherwise log the error and return the cached value.
+            Err(err) => error!(target: "view_client", "get_chain_info(): {}", err)
+        }
+        self.chain_info.clone()
     }
 }
 
@@ -1129,55 +1198,8 @@ impl Handler<NetworkViewClientMessages> for ViewClientActor {
                     NetworkViewClientResponses::NoResponse
                 }
             }
-            NetworkViewClientMessages::GetChainInfo => match self.chain.head() {
-                Ok(head) => {
-                    match self.runtime_adapter.num_shards(&head.epoch_id) {
-                        Ok(num_shards) => {
-                            // convert config tracked shards
-                            // runtime will track all shards if config tracked shards is not empty
-                            // https://github.com/near/nearcore/issues/4930
-                            let tracked_shards = if self.config.tracked_shards.is_empty() {
-                                vec![]
-                            } else {
-                                (0..num_shards).collect()
-                            };
-                            NetworkViewClientResponses::ChainInfo {
-                                genesis_id: GenesisId {
-                                    chain_id: self.config.chain_id.clone(),
-                                    hash: *self.chain.genesis().hash(),
-                                },
-                                height: self.get_height(&head),
-                                tracked_shards,
-                                archival: self.config.archive,
-                            }
-                        }
-                        Err(err) => {
-                            error!(target: "view_client", "Cannot retrieve num shards: {}", err);
-                            NetworkViewClientResponses::ChainInfo {
-                                genesis_id: GenesisId {
-                                    chain_id: self.config.chain_id.clone(),
-                                    hash: *self.chain.genesis().hash(),
-                                },
-                                height: self.get_height(&head),
-                                tracked_shards: self.config.tracked_shards.clone(),
-                                archival: self.config.archive,
-                            }
-                        }
-                    }
-                }
-                Err(err) => {
-                    error!(target: "view_client", "Cannot retrieve chain head: {}", err);
-                    NetworkViewClientResponses::ChainInfo {
-                        genesis_id: GenesisId {
-                            chain_id: self.config.chain_id.clone(),
-                            hash: *self.chain.genesis().hash(),
-                        },
-                        height: self.chain.genesis().height(),
-                        tracked_shards: self.config.tracked_shards.clone(),
-                        archival: self.config.archive,
-                    }
-                }
-            },
+            NetworkViewClientMessages::GetChainInfo =>
+                NetworkViewClientResponses::GetChainInfo(self.get_chain_info()),
             NetworkViewClientMessages::StateRequestHeader { shard_id, sync_hash } => {
                 if !self.check_state_sync_request() {
                     return NetworkViewClientResponses::NoResponse;
@@ -1319,12 +1341,24 @@ impl Handler<NetworkViewClientMessages> for ViewClientActor {
                         Ok(true) => {
                             filtered_announce_accounts.push(announce_account);
                         }
+                        // TODO(gprusak): Here we ban for broadcasting accounts which have been slashed
+                        // according to BlockInfo for the current chain tip. It is unfair,
+                        // given that peers do not have perfectly synchronized heads:
+                        // - AFAIU each block can introduce a slashed account, so the announcement
+                        //   could be OK at the moment that peer has sent it out.
+                        // - the current epoch_id is not related to announce_account.epoch_id,
+                        //   so it carry a perfectly valid (outdated) information.
                         Ok(false) => {
                             return NetworkViewClientResponses::Ban {
                                 ban_reason: ReasonForBan::InvalidSignature,
                             };
                         }
-                        // Filter this account
+                        // Filter out this account. This covers both good reasons to ban the peer:
+                        // - signature didn't match the data and public_key. 
+                        // - account is not a validator for the given epoch
+                        // and cases when we were just unable to validate the data (so we shouldn't
+                        // ban), for example when the node is not aware of the public key for the given
+                        // (account_id,epoch_id) pair.
                         Err(e) => {
                             debug!(target: "view_client", "Failed to validate account announce signature: {}", e);
                         }

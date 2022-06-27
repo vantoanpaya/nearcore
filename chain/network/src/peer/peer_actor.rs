@@ -256,8 +256,8 @@ impl PeerActor {
                 .send(NetworkViewClientMessages::GetChainInfo)
                 .into_actor(self)
                 .then(move |res, act, _ctx| match res {
-                    Ok(NetworkViewClientResponses::ChainInfo { genesis_id, .. }) => {
-                        act.genesis_id = genesis_id;
+                    Ok(NetworkViewClientResponses::GetChainInfo(info)) => {
+                        act.genesis_id = info.genesis_id;
                         actix::fut::ready(())
                     }
                     Err(err) => {
@@ -279,19 +279,19 @@ impl PeerActor {
             .send(NetworkViewClientMessages::GetChainInfo)
             .into_actor(self)
             .then(move |res, act, _ctx| match res {
-                Ok(NetworkViewClientResponses::ChainInfo {
-                    genesis_id,
-                    height,
-                    tracked_shards,
-                    archival,
-                }) => {
+                Ok(NetworkViewClientResponses::GetChainInfo(info)) => {
                     let handshake = match act.protocol_version {
                         39..=PROTOCOL_VERSION => PeerMessage::Handshake(Handshake::new(
                             act.protocol_version,
                             act.my_node_id().clone(),
                             act.other_peer_id().unwrap().clone(),
                             act.my_node_info.addr_port(),
-                            PeerChainInfoV2 { genesis_id, height, tracked_shards, archival },
+                            PeerChainInfoV2 {
+                                genesis_id: info.genesis_id,
+                                height: info.height,
+                                tracked_shards: info.tracked_shards,
+                                archival: info.archival,
+                            },
                             act.partial_edge_info.as_ref().unwrap().clone(),
                         )),
                         _ => {

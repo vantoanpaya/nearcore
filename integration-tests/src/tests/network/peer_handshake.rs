@@ -3,6 +3,7 @@ use std::net::{SocketAddr, TcpStream};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
+use std::collections::HashMap;
 
 use actix::actors::mocker::Mocker;
 use actix::System;
@@ -12,6 +13,7 @@ use futures::{future, FutureExt};
 use near_actix_test_utils::run_actix;
 use near_client::{ClientActor, ViewClientActor};
 use near_logger_utils::init_test_logger;
+use near_primitives::types::EpochId;
 
 use near_network::test_utils::{
     convert_boot_nodes, open_port, wait_or_timeout, GetInfo, StopSignal, WaitOrTimeoutActor,
@@ -19,6 +21,7 @@ use near_network::test_utils::{
 use near_network::types::NetworkClientResponses;
 use near_network::PeerManagerActor;
 use near_network_primitives::types::{
+    ChainInfo, EpochInfo,
     NetworkConfig, NetworkViewClientMessages, NetworkViewClientResponses,
 };
 #[cfg(test)]
@@ -46,12 +49,15 @@ fn make_peer_manager(
         let msg = msg.downcast_ref::<NetworkViewClientMessages>().unwrap();
         match msg {
             NetworkViewClientMessages::GetChainInfo => {
-                Box::new(Some(NetworkViewClientResponses::ChainInfo {
+                Box::new(Some(NetworkViewClientResponses::GetChainInfo(ChainInfo{
                     genesis_id: Default::default(),
-                    height: 1,
                     tracked_shards: vec![],
                     archival: false,
-                }))
+                    
+                    height: 1,
+                    this_epoch: Arc::new(EpochInfo{id:EpochId::default(), priority_accounts: HashMap::new()}),
+                    next_epoch: Arc::new(EpochInfo{id:EpochId::default(), priority_accounts: HashMap::new()}),
+                })))
             }
             _ => Box::new(Some(NetworkViewClientResponses::NoResponse)),
         }

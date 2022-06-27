@@ -5,6 +5,7 @@ use crate::concurrency::{Ctx, Once, RateLimiter, Scope, WeakMap};
 use near_network_primitives::types::{
     AccountIdOrPeerTrackingShard, NetworkViewClientMessages, NetworkViewClientResponses,
     PartialEncodedChunkRequestMsg, PartialEncodedChunkResponseMsg,
+    ChainInfo, EpochInfo,
 };
 
 use actix::{Actor, Context, Handler};
@@ -13,10 +14,12 @@ use near_network::types::{
     FullPeerInfo, NetworkClientMessages, NetworkClientResponses, NetworkInfo, NetworkRequests,
     PeerManagerAdapter, PeerManagerMessageRequest,
 };
+use std::collections::HashMap;
 use near_primitives::block::{Block, BlockHeader, GenesisId};
 use near_primitives::hash::CryptoHash;
 use near_primitives::sharding::{ChunkHash, ShardChunkHeader};
 use near_primitives::time::Clock;
+use near_primitives::types::EpochId;
 use nearcore::config::NearConfig;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
@@ -322,15 +325,18 @@ impl Handler<NetworkViewClientMessages> for FakeClientActor {
                 "EpochSyncFinalizationRequest"
             }
             NetworkViewClientMessages::GetChainInfo => {
-                return NetworkViewClientResponses::ChainInfo {
+                return NetworkViewClientResponses::GetChainInfo(ChainInfo {
                     genesis_id: GenesisId {
                         chain_id: self.network.chain_id.clone(),
                         hash: genesis_hash(&self.network.chain_id),
                     },
-                    height: 0,
                     tracked_shards: Default::default(),
                     archival: false,
-                }
+                    
+                    height: 0,
+                    this_epoch: Arc::new(EpochInfo{id:EpochId::default(), priority_accounts: HashMap::default()}),
+                    next_epoch: Arc::new(EpochInfo{id:EpochId::default(), priority_accounts: HashMap::default()}),
+                })
             }
             NetworkViewClientMessages::AnnounceAccount(_) => {
                 return NetworkViewClientResponses::NoResponse;

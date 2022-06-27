@@ -2,7 +2,7 @@ use crate::network_protocol::testonly as data;
 use crate::sink::Sink;
 use crate::types::{NetworkClientMessages, NetworkClientResponses};
 use actix::Actor as _;
-use near_network_primitives::types::{NetworkViewClientMessages, NetworkViewClientResponses};
+use near_network_primitives::types::{NetworkViewClientMessages, NetworkViewClientResponses, ChainInfo, EpochInfo};
 use near_primitives::block::{Block, BlockHeader};
 use near_primitives::challenge::Challenge;
 use near_primitives::hash::CryptoHash;
@@ -12,6 +12,7 @@ use near_primitives::syncing::EpochSyncResponse;
 use near_primitives::transaction::SignedTransaction;
 use near_primitives::types::EpochId;
 use std::sync::Arc;
+use std::collections::HashMap;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Event {
@@ -48,12 +49,15 @@ impl actix::Handler<NetworkViewClientMessages> for Actor {
         match msg {
             NetworkViewClientMessages::GetChainInfo => {
                 let ci = self.chain.get_info();
-                NetworkViewClientResponses::ChainInfo {
+                NetworkViewClientResponses::GetChainInfo(ChainInfo {
                     genesis_id: ci.genesis_id,
-                    height: ci.height,
                     tracked_shards: ci.tracked_shards,
                     archival: ci.archival,
-                }
+                    
+                    height: ci.height,
+                    this_epoch: Arc::new(EpochInfo{id:EpochId::default(), priority_accounts: HashMap::new()}),
+                    next_epoch: Arc::new(EpochInfo{id:EpochId::default(), priority_accounts: HashMap::new()}),
+                })
             }
             NetworkViewClientMessages::BlockRequest(block_hash) => {
                 self.event_sink.push(Event::BlockRequest(block_hash));
