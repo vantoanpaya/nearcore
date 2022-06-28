@@ -2,13 +2,15 @@ use crate::routing::route_back_cache::RouteBackCache;
 use crate::store;
 use itertools::Itertools;
 use lru::LruCache;
+use crate::network_protocol::SignedValidator;
 use near_network_primitives::time;
 use near_network_primitives::types::{Edge, PeerIdOrHash};
 use near_primitives::hash::CryptoHash;
 use near_primitives::network::{AnnounceAccount, PeerId};
 use near_primitives::types::AccountId;
-use std::collections::HashMap;
+use near_primitives::types::EpochId;
 use std::sync::Arc;
+use std::collections::{HashMap,HashSet};
 use tracing::warn;
 
 const ANNOUNCE_ACCOUNT_CACHE_SIZE: usize = 10_000;
@@ -16,6 +18,7 @@ const ROUND_ROBIN_MAX_NONCE_DIFFERENCE_ALLOWED: usize = 10;
 const ROUND_ROBIN_NONCE_CACHE_SIZE: usize = 10_000;
 
 pub(crate) struct RoutingTableView {
+    validators: HashMap<EpochId,HashMap<AccountId,SignedValidator>>,
     /// PeerId associated for every known account id.
     account_peers: LruCache<AccountId, AnnounceAccount>,
     /// Active PeerId that are part of the shortest path to each PeerId.
@@ -45,6 +48,7 @@ impl RoutingTableView {
         // Find greater nonce on disk and set `component_nonce` to this value.
 
         Self {
+            validators: HashMap::new(),
             account_peers: LruCache::new(ANNOUNCE_ACCOUNT_CACHE_SIZE),
             peer_forwarding: Default::default(),
             local_edges_info: Default::default(),
@@ -52,6 +56,23 @@ impl RoutingTableView {
             store,
             route_nonce: LruCache::new(ROUND_ROBIN_NONCE_CACHE_SIZE),
         }
+    }
+
+    pub fn set_active_epochs(&mut self, epochs :HashSet<EpochId>) {
+        self.validators.retain(|e,_|epochs.contains(e));
+        for e in epochs {
+            self.validators.entry(e).or_default();
+        }
+    }
+
+    pub fn add_validator(&mut self, v:SignedValidator) {
+        let x = match self.validators.get_mut(&v.epoch_id) {
+            None => return,
+            Some(x) => x,
+        };
+        let a = &v.account_id;
+        let newer = x.get(a).map(|x|x.timestamp<v.timestamp).unwrap_or(true);
+        if newer { x.insert(a.clone(),v); }
     }
 
     /// Checks whenever edge is newer than the one we already have.

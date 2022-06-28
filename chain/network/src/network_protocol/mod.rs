@@ -39,10 +39,10 @@ pub struct PeerAddr {
 
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub struct Validator {
-    peers: Vec<PeerAddr>,
-    account_id: AccountId,
-    epoch_id: EpochId,
-    timestamp: time::Utc,
+    pub peers: Vec<PeerAddr>,
+    pub account_id: AccountId,
+    pub epoch_id: EpochId,
+    pub timestamp: time::Utc,
 }
 
 impl Validator {
@@ -64,6 +64,13 @@ pub struct SignedValidator {
     validator: Validator,
     // serialized and signed validator.
     payload: AccountKeySignedPayload,
+}
+
+impl std::ops::Deref for SignedValidator {
+    type Target = Validator;
+    fn deref(&self) -> &Self::Target {
+        &self.validator
+    }
 }
 
 #[derive(PartialEq, Eq, Clone, Debug, Default)]
