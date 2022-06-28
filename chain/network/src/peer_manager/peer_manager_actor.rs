@@ -2090,6 +2090,20 @@ impl PeerManagerActor {
                 // Process edges and add new edges to the routing table. Also broadcast new edges.
                 let edges = routing_table_update.edges;
                 let accounts = routing_table_update.accounts;
+                let validators = routing_table_update.validators;
+
+                let view_client = self.view_client_addr.clone();
+                let accounts_data = self.accounts_data.clone();
+                async move {
+                    let info = view_client.send(NetworkViewClientMessages::GetChainInfo).await;
+                    for epoch_id in accounts_data.update_epochs([info.this_epoch,info.next_epoch]) {
+                        // request epoch data.
+                    }
+                    match self.accounts_data.update_data(validators).await {
+                        Ok(new_data) => // broadcast new_data
+                        Err(err) => // ban peer
+                    }
+                }
 
                 // Filter known accounts before validating them.
                 let accounts: Vec<(AnnounceAccount, Option<EpochId>)> = accounts
