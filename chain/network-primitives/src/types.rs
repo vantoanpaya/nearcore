@@ -327,7 +327,7 @@ pub enum NetworkViewClientMessages {
 pub struct EpochInfo {
     pub id: EpochId,
     // Public keys of accounts participating in the BFT consensus.
-    // It currently includes "block producers", "chunk producers" and approvers.
+    // It currently includes "block producers", "chunk producers" and "approvers".
     // They are collectively known as "validators".
     // Peers acting on behalf of these accounts have a higher
     // priority on the NEAR network than other peers.

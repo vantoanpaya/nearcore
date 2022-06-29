@@ -6,6 +6,8 @@ use crate::private_actix::{
     PeerRequestResult, PeersRequest, RegisterPeer, RegisterPeerResponse, SendMessage, StopMsg,
     Unregister, ValidateEdgeList,
 };
+use parking_lot::Mutex;
+use crate::accounts_data::AccountsData;
 use crate::private_actix::{PeerToManagerMsg, PeerToManagerMsgResp, PeersResponse};
 use crate::routing;
 use crate::routing::edge_validator_actor::EdgeValidatorHelper;
@@ -145,7 +147,7 @@ impl TryFrom<&PeerInfo> for WhitelistNode {
 }
 
 /// Actor that manages peers connections.
-pub struct PeerManagerActor {
+pub struct PeerManager {
     clock: time::Clock,
     /// Networking configuration.
     config: NetworkConfig,
@@ -193,6 +195,15 @@ pub struct PeerManagerActor {
     whitelist_nodes: Vec<WhitelistNode>,
     /// test-only.
     event_sink: Sink<Event>,
+    
+    accounts_data: Arc<Mutex<AccountsData>>,
+    accounts_data_threadpool: tokio::runtime::Runtime, 
+}
+
+/// Actor that manages peers connections.
+pub struct PeerManagerActor{
+    peer_manager: Arc<Mutex<PeerManager>>,
+    runtime: tokio::runtime::Runtime,
 }
 
 // test-only
@@ -209,13 +220,13 @@ impl Actor for PeerManagerActor {
     type Context = Context<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
+        let pm = self.peer_manager.lock();
         // Start server if address provided.
-        if let Some(server_addr) = self.config.node_addr {
+        if let Some(server_addr) = pm.config.node_addr {
             debug!(target: "network", at = ?server_addr, "starting public server");
             let peer_manager_addr = ctx.address();
             let event_sink = self.event_sink.clone();
-
-            actix::spawn(async move {
+            self.runtime.spawn(async move {
                 let listener = match TcpListener::bind(server_addr).await {
                     Ok(it) => it,
                     Err(e) => {
@@ -326,6 +337,8 @@ impl PeerManagerActor {
             connected_peers: HashMap::default(),
             outgoing_peers: HashSet::default(),
             routing_table_view,
+            accounts_data: Default::default(),
+            accounts_data_threadpool: tokio::runtime::Runtime::new(),
             network_graph,
             routing_table_exchange_helper: Default::default(),
             started_connect_attempts: false,
@@ -2090,20 +2103,6 @@ impl PeerManagerActor {
                 // Process edges and add new edges to the routing table. Also broadcast new edges.
                 let edges = routing_table_update.edges;
                 let accounts = routing_table_update.accounts;
-                let validators = routing_table_update.validators;
-
-                let view_client = self.view_client_addr.clone();
-                let accounts_data = self.accounts_data.clone();
-                async move {
-                    let info = view_client.send(NetworkViewClientMessages::GetChainInfo).await;
-                    for epoch_id in accounts_data.update_epochs([info.this_epoch,info.next_epoch]) {
-                        // request epoch data.
-                    }
-                    match self.accounts_data.update_data(validators).await {
-                        Ok(new_data) => // broadcast new_data
-                        Err(err) => // ban peer
-                    }
-                }
 
                 // Filter known accounts before validating them.
                 let accounts: Vec<(AnnounceAccount, Option<EpochId>)> = accounts

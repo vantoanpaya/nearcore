@@ -27,6 +27,7 @@ use near_primitives::syncing::{EpochSyncFinalizationResponse, EpochSyncResponse}
 use near_primitives::transaction::SignedTransaction;
 use near_primitives::types::{AccountId, EpochId, ProtocolVersion};
 use near_primitives::version::PEER_MIN_ALLOWED_PROTOCOL_VERSION;
+use near_crypto::PublicKey;
 use protobuf::Message as _;
 use std::fmt;
 use thiserror::Error;
@@ -59,6 +60,12 @@ pub struct AccountKeySignedPayload {
     signature: near_crypto::Signature,
 }
 
+impl AccountKeySignedPayload {
+    pub fn verify(&self, key:&PublicKey) -> bool {
+        self.signature.verify(&self.payload,key)
+    }
+}
+
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub struct SignedValidator {
     validator: Validator,
@@ -71,6 +78,10 @@ impl std::ops::Deref for SignedValidator {
     fn deref(&self) -> &Self::Target {
         &self.validator
     }
+}
+
+impl SignedValidator {
+    pub fn payload(&self) -> &AccountKeySignedPayload { &self.payload }
 }
 
 #[derive(PartialEq, Eq, Clone, Debug, Default)]
@@ -151,6 +162,9 @@ pub enum PeerMessage {
     SyncRoutingTable(RoutingTableUpdate),
     RequestUpdateNonce(PartialEdgeInfo),
     ResponseUpdateNonce(Edge),
+
+    SyncAccountsDataRequest,
+    SyncAccountsData([SignedValidator]),
 
     PeersRequest,
     PeersResponse(Vec<PeerInfo>),

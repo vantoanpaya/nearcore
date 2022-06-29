@@ -6,6 +6,7 @@ pub use crate::stats::metrics::RECEIVED_INFO_ABOUT_ITSELF;
 mod network_protocol;
 mod peer;
 mod peer_manager;
+mod accounts_data;
 pub(crate) mod private_actix;
 pub mod routing;
 pub(crate) mod stats;
