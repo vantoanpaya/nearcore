@@ -77,7 +77,7 @@ impl AccountsData {
         has_new
     }
 
-    async fn insert(&self, data:Vec<SignedAccountData>) -> Result<Vec<SignedAccountData>,Error> {
+    pub async fn insert(&self, data:Vec<SignedAccountData>) -> Result<Vec<SignedAccountData>,Error> {
         // spawn insertions on a dedicated runtime.
         let mut futures = vec![];
         let epochs = self.0.epochs.read();
