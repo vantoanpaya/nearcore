@@ -6,7 +6,6 @@ use crate::private_actix::{
     PeerRequestResult, PeersRequest, RegisterPeer, RegisterPeerResponse, SendMessage, StopMsg,
     Unregister, ValidateEdgeList,
 };
-use parking_lot::Mutex;
 use crate::accounts_data::AccountsData;
 use crate::private_actix::{PeerToManagerMsg, PeerToManagerMsgResp, PeersResponse};
 use crate::routing;
@@ -147,7 +146,7 @@ impl TryFrom<&PeerInfo> for WhitelistNode {
 }
 
 /// Actor that manages peers connections.
-pub struct PeerManager {
+pub struct PeerManagerActor {
     clock: time::Clock,
     /// Networking configuration.
     config: NetworkConfig,
@@ -196,14 +195,7 @@ pub struct PeerManager {
     /// test-only.
     event_sink: Sink<Event>,
     
-    accounts_data: Arc<Mutex<AccountsData>>,
-    accounts_data_threadpool: tokio::runtime::Runtime, 
-}
-
-/// Actor that manages peers connections.
-pub struct PeerManagerActor{
-    peer_manager: Arc<Mutex<PeerManager>>,
-    runtime: tokio::runtime::Runtime,
+    accounts_data: AccountsData,
 }
 
 // test-only
@@ -220,13 +212,13 @@ impl Actor for PeerManagerActor {
     type Context = Context<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
-        let pm = self.peer_manager.lock();
         // Start server if address provided.
-        if let Some(server_addr) = pm.config.node_addr {
+        if let Some(server_addr) = self.config.node_addr {
             debug!(target: "network", at = ?server_addr, "starting public server");
             let peer_manager_addr = ctx.address();
             let event_sink = self.event_sink.clone();
-            self.runtime.spawn(async move {
+
+            actix::spawn(async move {
                 let listener = match TcpListener::bind(server_addr).await {
                     Ok(it) => it,
                     Err(e) => {
@@ -337,8 +329,6 @@ impl PeerManagerActor {
             connected_peers: HashMap::default(),
             outgoing_peers: HashSet::default(),
             routing_table_view,
-            accounts_data: Default::default(),
-            accounts_data_threadpool: tokio::runtime::Runtime::new(),
             network_graph,
             routing_table_exchange_helper: Default::default(),
             started_connect_attempts: false,
@@ -349,6 +339,7 @@ impl PeerManagerActor {
             peer_counter: Arc::new(AtomicUsize::new(0)),
             whitelist_nodes,
             event_sink: Sink::void(),
+            accounts_data: AccountsData::new(),
         })
     }
 
@@ -833,6 +824,7 @@ impl PeerManagerActor {
         let peer_counter = self.peer_counter.clone();
         peer_counter.fetch_add(1, Ordering::SeqCst);
         let clock = self.clock.clone();
+        let accounts_data = self.accounts_data.clone();
         PeerActor::start_in_arbiter(&arbiter.handle(), move |ctx| {
             let (read, write) = tokio::io::split(stream);
 
@@ -868,6 +860,7 @@ impl PeerManagerActor {
                 peer_counter,
                 rate_limiter,
                 None,
+                accounts_data,
             )
         });
     }

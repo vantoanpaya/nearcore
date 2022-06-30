@@ -20,8 +20,6 @@ pub enum ParseRoutingTableUpdateError {
     Edges(ParseVecError<ParseEdgeError>),
     #[error("accounts {0}")]
     Accounts(ParseVecError<ParseAnnounceAccountError>),
-    #[error("validators {0}")]
-    Validators(ParseVecError<ParseSignedValidatorError>),
 }
 
 impl From<&RoutingTableUpdate> for proto::RoutingTableUpdate {
@@ -29,7 +27,6 @@ impl From<&RoutingTableUpdate> for proto::RoutingTableUpdate {
         Self {
             edges: x.edges.iter().map(Into::into).collect(),
             accounts: x.accounts.iter().map(Into::into).collect(),
-            validators: x.validators.iter().map(Into::into).collect(),
             ..Default::default()
         }
     }
@@ -41,7 +38,6 @@ impl TryFrom<&proto::RoutingTableUpdate> for RoutingTableUpdate {
         Ok(Self {
             edges: try_from_slice(&x.edges).map_err(Self::Error::Edges)?,
             accounts: try_from_slice(&x.accounts).map_err(Self::Error::Accounts)?,
-            validators: try_from_slice(&x.validators).map_err(Self::Error::Validators)?,
         })
     }
 }
@@ -107,6 +103,17 @@ impl From<&PeerMessage> for proto::PeerMessage {
                         ..Default::default()
                     })
                 }
+                PeerMessage::SyncAccountsDataRequest => ProtoMT::SyncAccountsDataRequest(
+                    proto::SyncAccountsDataRequest{
+                        ..Default::default()
+                    }
+                ),
+                PeerMessage::SyncAccountsDataResponse(data) => ProtoMT::SyncAccountsDataResponse(
+                    proto::SyncAccountsDataResponse{
+                        data: data.iter().map(Into::into).collect(),
+                        ..Default::default()
+                    }
+                ),
                 PeerMessage::PeersRequest => ProtoMT::PeersRequest(proto::PeersRequest::new()),
                 PeerMessage::PeersResponse(pis) => ProtoMT::PeersResponse(proto::PeersResponse {
                     peers: pis.iter().map(Into::into).collect(),
@@ -224,6 +231,8 @@ pub enum ParsePeerMessageError {
     EpochSyncFinalizationResponse(ParseEpochSyncFinalizationResponseError),
     #[error("routed_created_at: {0}")]
     RoutedCreatedAtTimestamp(ComponentRange),
+    #[error("sync_accounts_data_response: {0}")]
+    SyncAccountsDataResponse(ParseVecError<ParseSignedAccountDataError>),
 }
 
 impl TryFrom<&proto::PeerMessage> for PeerMessage {
@@ -249,6 +258,10 @@ impl TryFrom<&proto::PeerMessage> for PeerMessage {
             ),
             ProtoMT::UpdateNonceResponse(unr) => PeerMessage::ResponseUpdateNonce(
                 try_from_required(&unr.edge).map_err(Self::Error::UpdateNonceResponse)?,
+            ),
+            ProtoMT::SyncAccountsDataRequest(_) => PeerMessage::SyncAccountsDataRequest,
+            ProtoMT::SyncAccountsDataResponse(ads) => PeerMessage::SyncAccountsDataResponse(
+                try_from_slice(&ads.data).map_err(Self::Error::SyncAccountsDataResponse)?,
             ),
             ProtoMT::PeersRequest(_) => PeerMessage::PeersRequest,
             ProtoMT::PeersResponse(pr) => PeerMessage::PeersResponse(

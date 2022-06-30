@@ -39,18 +39,20 @@ pub struct PeerAddr {
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
-pub struct Validator {
+pub struct AccountData {
     pub peers: Vec<PeerAddr>,
     pub account_id: AccountId,
     pub epoch_id: EpochId,
     pub timestamp: time::Utc,
 }
 
-impl Validator {
-    pub fn sign(self, signer: &dyn near_crypto::Signer) -> SignedValidator {
+impl AccountData {
+    pub fn sign(self, signer: &dyn near_crypto::Signer) -> SignedAccountData {
         let payload = proto::AccountKeyPayload::from(&self).write_to_bytes().unwrap();
+        // TODO: here we should validate that payload is not too big - i.e. that it won't exceed
+        // the maximal allowed size.
         let signature = signer.sign(&payload);
-        SignedValidator { validator: self, payload: AccountKeySignedPayload { payload, signature } }
+        SignedAccountData { account_data: self, payload: AccountKeySignedPayload { payload, signature } }
     }
 }
 
@@ -67,20 +69,20 @@ impl AccountKeySignedPayload {
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
-pub struct SignedValidator {
-    validator: Validator,
+pub struct SignedAccountData {
+    account_data: AccountData,
     // serialized and signed validator.
     payload: AccountKeySignedPayload,
 }
 
-impl std::ops::Deref for SignedValidator {
-    type Target = Validator;
+impl std::ops::Deref for SignedAccountData {
+    type Target = AccountData;
     fn deref(&self) -> &Self::Target {
-        &self.validator
+        &self.account_data
     }
 }
 
-impl SignedValidator {
+impl SignedAccountData {
     pub fn payload(&self) -> &AccountKeySignedPayload { &self.payload }
 }
 
@@ -88,20 +90,19 @@ impl SignedValidator {
 pub struct RoutingTableUpdate {
     pub edges: Vec<Edge>,
     pub accounts: Vec<AnnounceAccount>,
-    pub validators: Vec<SignedValidator>,
 }
 
 impl RoutingTableUpdate {
     pub(crate) fn from_edges(edges: Vec<Edge>) -> Self {
-        Self { edges, accounts: Vec::new(), validators: Vec::new() }
+        Self { edges, accounts: Vec::new() }
     }
 
     pub fn from_accounts(accounts: Vec<AnnounceAccount>) -> Self {
-        Self { edges: Vec::new(), accounts, validators: Vec::new() }
+        Self { edges: Vec::new(), accounts }
     }
 
     pub(crate) fn new(edges: Vec<Edge>, accounts: Vec<AnnounceAccount>) -> Self {
-        Self { edges, accounts, validators: Vec::new() }
+        Self { edges, accounts }
     }
 }
 /// Structure representing handshake between peers.
@@ -164,7 +165,7 @@ pub enum PeerMessage {
     ResponseUpdateNonce(Edge),
 
     SyncAccountsDataRequest,
-    SyncAccountsData([SignedValidator]),
+    SyncAccountsDataResponse(Vec<SignedAccountData>),
 
     PeersRequest,
     PeersResponse(Vec<PeerInfo>),

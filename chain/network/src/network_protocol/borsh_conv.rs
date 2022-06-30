@@ -78,7 +78,7 @@ impl From<&mem::HandshakeFailureReason> for net::HandshakeFailureReason {
 
 impl From<net::RoutingTableUpdate> for mem::RoutingTableUpdate {
     fn from(x: net::RoutingTableUpdate) -> Self {
-        Self { edges: x.edges, accounts: x.accounts, validators: vec![] }
+        Self { edges: x.edges, accounts: x.accounts }
     }
 }
 
@@ -157,6 +157,11 @@ impl From<&mem::PeerMessage> for net::PeerMessage {
             }
             mem::PeerMessage::RequestUpdateNonce(e) => net::PeerMessage::RequestUpdateNonce(e),
             mem::PeerMessage::ResponseUpdateNonce(e) => net::PeerMessage::ResponseUpdateNonce(e),
+
+            // These messages are not supported, we translate them to an empty RoutingTableUpdate.
+            mem::PeerMessage::SyncAccountsDataRequest => net::PeerMessage::SyncRoutingTable(net::RoutingTableUpdate::default()),
+            mem::PeerMessage::SyncAccountsDataResponse(_) => net::PeerMessage::SyncRoutingTable(net::RoutingTableUpdate::default()),
+
             mem::PeerMessage::PeersRequest => net::PeerMessage::PeersRequest,
             mem::PeerMessage::PeersResponse(pis) => net::PeerMessage::PeersResponse(pis),
             mem::PeerMessage::BlockHeadersRequest(bhs) => {

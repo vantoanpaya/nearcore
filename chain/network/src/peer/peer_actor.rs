@@ -11,6 +11,7 @@ use crate::types::{
     Handshake, HandshakeFailureReason, NetworkClientMessages, NetworkClientResponses, PeerMessage,
     PeerStatsResult, QueryPeerStats,
 };
+use crate::accounts_data::AccountsData;
 use actix::{
     Actor, ActorContext, ActorFutureExt, Arbiter, AsyncContext, Context, ContextFutureSpawner,
     Handler, Recipient, Running, StreamHandler, WrapFuture,
@@ -113,6 +114,7 @@ pub(crate) struct PeerActor {
     /// Whether the PeerActor should skip protobuf support detection and use
     /// a given encoding right away.
     force_encoding: Option<Encoding>,
+    accounts_data: AccountsData,
 }
 
 impl Debug for PeerActor {
@@ -149,6 +151,7 @@ impl PeerActor {
         peer_counter: Arc<AtomicUsize>,
         throttle_controller: ThrottleController,
         force_encoding: Option<Encoding>,
+        accounts_data: AccountsData,
     ) -> Self {
         let now = clock.now();
         PeerActor {
@@ -176,6 +179,7 @@ impl PeerActor {
             throttle_controller,
             protocol_buffers_supported: false,
             force_encoding,
+            accounts_data,
         }
     }
 
@@ -550,7 +554,9 @@ impl PeerActor {
             | PeerMessage::BlockRequest(_)
             | PeerMessage::BlockHeadersRequest(_)
             | PeerMessage::EpochSyncRequest(_)
-            | PeerMessage::EpochSyncFinalizationRequest(_) => {
+            | PeerMessage::EpochSyncFinalizationRequest(_)
+            | PeerMessage::SyncAccountsDataRequest
+            | PeerMessage::SyncAccountsDataResponse(_) => {
                 error!(target: "network", "Peer receive_client_message received unexpected type: {:?}", msg);
                 return;
             }
@@ -1011,6 +1017,10 @@ impl StreamHandler<Result<Vec<u8>, ReasonForBan>> for PeerActor {
                         },
                         Some(self.throttle_controller.clone()),
                     ));
+            }
+            (PeerStatus::Ready, PeerMessage::SyncAccountsDataRequest) => {
+                let accounts_data = self.accounts_data.dump();
+                self.send_message_or_log(&PeerMessage::SyncAccountsDataResponse(accounts_data));
             }
             (PeerStatus::Ready, PeerMessage::Routed(routed_message)) => {
                 trace!(target: "network", "Received routed message from {} to {:?}.", self.peer_info, routed_message.msg.target);
