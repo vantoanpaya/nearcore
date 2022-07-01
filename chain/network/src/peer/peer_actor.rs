@@ -1005,17 +1005,19 @@ impl StreamHandler<Result<Vec<u8>, ReasonForBan>> for PeerActor {
                 async move {
                     let chain_info = pms.clone().get_chain_info().await;
                     pms.accounts_data.set_epochs(vec![&chain_info.this_epoch,&chain_info.next_epoch]);
-                    let ban_reason = match pms.accounts_data.insert(data).await {
-                        Ok(new_data) => {
-                            pms.broadcast_message(SendMessage{
-                                message: PeerMessage::SyncAccountsDataResponse(new_data),
-                                context: Span::current().context(),
-                            }).await;
-                            None
-                        },
-                        Err(accounts_data::Error::InvalidSignature) => Some(ReasonForBan::InvalidSignature),
-                    };
-                    ban_reason
+                    let (new_data,err) = pms.accounts_data.clone().insert(data).await;
+                    // TODO(gprusak): this should be rate limited - diffs should be aggregated,
+                    // unless there was no recent broadcast of this type.
+                    if new_data.len()>0 {
+                        pms.broadcast_message(SendMessage{
+                            message: PeerMessage::SyncAccountsDataResponse(new_data),
+                            context: Span::current().context(),
+                        }).await;
+                    }
+                    err.map(|err|match {
+                        accounts_data::Error::InvalidSignature => ReasonForBan::InvalidSignature,
+                        accounts_data::Error::DataTooLarge => ReasonForBan::Abusive,
+                    })
                 }
                 .into_actor(self)
                 .map(|ban_reason, act, ctx| {

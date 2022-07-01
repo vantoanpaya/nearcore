@@ -46,13 +46,21 @@ pub struct AccountData {
     pub timestamp: time::Utc,
 }
 
+// Limit on the size of the serialized AccountData message.
+// It is important to have such a constraint on the serialized proto,
+// because it may contain many unknown fields (which are dropped during parsing). 
+pub const MAX_ACCOUNT_DATA_SIZE_BYTES : usize = 10000; // 10kB
+
 impl AccountData {
-    pub fn sign(self, signer: &dyn near_crypto::Signer) -> SignedAccountData {
+    pub fn sign(self, signer: &dyn near_crypto::Signer) -> anyhow::Result<SignedAccountData> {
         let payload = proto::AccountKeyPayload::from(&self).write_to_bytes().unwrap();
+        if payload.len()>MAX_ACCOUNT_DATA_SIZE_BYTES {
+            anyhow::bail!("payload size = {}, max is {}",payload.len(),MAX_ACCOUNT_DATA_SIZE_BYTES);
+        }
         // TODO: here we should validate that payload is not too big - i.e. that it won't exceed
         // the maximal allowed size.
         let signature = signer.sign(&payload);
-        SignedAccountData { account_data: self, payload: AccountKeySignedPayload { payload, signature } }
+        Ok(SignedAccountData { account_data: self, payload: AccountKeySignedPayload { payload, signature } })
     }
 }
 
@@ -63,11 +71,16 @@ pub struct AccountKeySignedPayload {
 }
 
 impl AccountKeySignedPayload {
+    pub fn len(&self) -> usize {
+        self.payload.len()
+    }
     pub fn verify(&self, key:&PublicKey) -> bool {
         self.signature.verify(&self.payload,key)
     }
 }
 
+// TODO(gprusak): if we expect this to be large, perhaps we should
+// pass around an Arc, rather than pass it by value.
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub struct SignedAccountData {
     account_data: AccountData,

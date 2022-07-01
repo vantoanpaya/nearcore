@@ -1,10 +1,12 @@
 use super::*;
 
+use std::sync::Arc;
 use crate::types::{Handshake, RoutingTableUpdate};
 use near_crypto::{InMemorySigner, KeyType, SecretKey};
 use near_network_primitives::time;
 use near_network_primitives::types::{
-    AccountOrPeerIdOrHash, Edge, PartialEdgeInfo, PeerChainInfoV2, PeerInfo, RawRoutedMessage,
+    ChainInfo, EpochInfo,
+    AccountOrPeerIdOrHash, Edge, PartialEdgeInfo, PeerInfo, RawRoutedMessage,
     RoutedMessageBody,
 };
 use near_primitives::block::{genesis_chunks, Block, BlockHeader, GenesisId};
@@ -136,7 +138,7 @@ pub fn make_edge(a: &InMemorySigner, b: &InMemorySigner) -> Edge {
     Edge::new(ap, bp, nonce, a.secret_key.sign(hash.as_ref()), b.secret_key.sign(hash.as_ref()))
 }
 
-pub fn make_routing_table<R: Rng>(rng: &mut R, clock: &time::Clock) -> RoutingTableUpdate {
+pub fn make_routing_table<R: Rng>(rng: &mut R) -> RoutingTableUpdate {
     let signers: Vec<_> = (0..7).map(|_| make_signer(rng)).collect();
     RoutingTableUpdate {
         accounts: (0..10).map(|_| make_announce_account(rng)).collect(),
@@ -149,7 +151,6 @@ pub fn make_routing_table<R: Rng>(rng: &mut R, clock: &time::Clock) -> RoutingTa
             }
             e
         },
-        validators: (0..4).map(|_| make_signed_validator(rng, clock)).collect(),
     }
 }
 
@@ -225,10 +226,26 @@ impl ChunkSet {
     }
 }
 
+pub fn make_epoch_id<R:Rng>(rng: &mut R) -> EpochId {
+    EpochId(CryptoHash::hash_bytes(&rng.gen::<[u8;19]>()))
+}
+
+pub fn make_epoch_info<R:Rng>(rng: &mut R) -> EpochInfo {
+    EpochInfo{
+        id: make_epoch_id(rng),
+        priority_accounts: (0..5)
+            .map(|_|make_signer(rng))
+            .map(|s|(s.account_id,s.public_key))
+            .collect(),
+    }
+}
+
 pub struct Chain {
     pub genesis_id: GenesisId,
     pub blocks: Vec<Block>,
     pub chunks: HashMap<ChunkHash, ShardChunk>,
+    pub this_epoch: Arc<EpochInfo>,
+    pub next_epoch: Arc<EpochInfo>,
 }
 
 impl Chain {
@@ -247,6 +264,8 @@ impl Chain {
                 hash: Default::default(),
             },
             blocks,
+            this_epoch: Arc::new(make_epoch_info(rng)), 
+            next_epoch: Arc::new(make_epoch_info(rng)),
             chunks: chunks.chunks,
         }
     }
@@ -255,12 +274,15 @@ impl Chain {
         self.blocks.last().unwrap().header().height()
     }
 
-    pub fn get_info(&self) -> PeerChainInfoV2 {
-        PeerChainInfoV2 {
+    pub fn get_info(&self) -> ChainInfo {
+        ChainInfo {
             genesis_id: self.genesis_id.clone(),
-            height: self.height(),
             tracked_shards: Default::default(),
             archival: false,
+            
+            height: self.height(),
+            this_epoch: self.this_epoch.clone(),
+            next_epoch: self.next_epoch.clone(),
         }
     }
 
@@ -279,7 +301,7 @@ pub fn make_handshake<R: Rng>(rng: &mut R, chain: &Chain) -> Handshake {
         a_id,
         b_id,
         Some(rng.gen()),
-        chain.get_info(),
+        chain.get_info().into(),
         make_partial_edge(rng),
     )
 }
@@ -310,8 +332,8 @@ pub fn make_peer_addr(rng: &mut impl Rng, ip: net::IpAddr) -> PeerAddr {
     PeerAddr { addr: net::SocketAddr::new(ip, rng.gen()), peer_id: Some(make_peer_id(rng)) }
 }
 
-pub fn make_validator(rng: &mut impl Rng, clock: &time::Clock, account_id: AccountId) -> Validator {
-    Validator {
+pub fn make_account_data(rng: &mut impl Rng, clock: &time::Clock, account_id: AccountId) -> AccountData {
+    AccountData {
         peers: vec![
             // Can't inline make_ipv4/ipv6 calls, because 2-phase borrow
             // doesn't work.
@@ -334,7 +356,7 @@ pub fn make_validator(rng: &mut impl Rng, clock: &time::Clock, account_id: Accou
     }
 }
 
-pub fn make_signed_validator(rng: &mut impl Rng, clock: &time::Clock) -> SignedValidator {
+pub fn make_signed_account_data(rng: &mut impl Rng, clock: &time::Clock) -> SignedAccountData {
     let signer = make_signer(rng);
-    make_validator(rng, clock, signer.account_id.clone()).sign(&signer)
+    make_account_data(rng, clock, signer.account_id.clone()).sign(&signer).unwrap()
 }

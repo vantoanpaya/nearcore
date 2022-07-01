@@ -1,5 +1,7 @@
 use crate::broadcast;
 use crate::network_protocol::testonly as data;
+use crate::peer_manager::peer_manager_actor::PeerManagerState;
+use crate::accounts_data::AccountsData;
 use crate::peer::codec::Codec;
 use crate::peer::peer_actor::PeerActor;
 use crate::private_actix::{PeerRequestResult, RegisterPeerResponse, SendMessage};
@@ -226,13 +228,18 @@ impl PeerHandle {
                     handshake_timeout,
                     fpm.clone().recipient(),
                     fpm.clone().recipient(),
-                    fc.clone().recipient(),
-                    fc.clone().recipient(),
                     cfg.start_handshake_with.as_ref().map(|id| cfg.partial_edge_info(id, 1)),
                     Arc::new(AtomicUsize::new(0)),
                     Arc::new(AtomicUsize::new(0)),
                     rate_limiter,
                     cfg.force_encoding,
+                    Arc::new(PeerManagerState {
+                        client_addr: fc.clone().recipient(),
+                        view_client_addr: fc.clone().recipient(),
+                        accounts_data: AccountsData::new(),
+                        connected_peers: Default::default(),
+                        network_metrics: Default::default(), 
+                    })
                 )
             })
         })

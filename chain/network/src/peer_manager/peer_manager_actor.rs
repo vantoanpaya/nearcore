@@ -152,7 +152,7 @@ pub(crate) struct PeerManagerState {
     /// Address of the view client actor.
     pub view_client_addr: Recipient<NetworkViewClientMessages>,
     
-    pub accounts_data: AccountsData,
+    pub accounts_data: Arc<AccountsData>,
     /// Connected peers (inbound and outbound) with their full peer information.
     pub connected_peers: RwLock<HashMap<PeerId, ConnectedPeer>>,
     /// Dynamic Prometheus metrics

@@ -88,10 +88,7 @@ async fn test_peer_communication(
     assert_eq!(Event::Client(CE::BlockHeaders(want)), inbound.events.recv().await);
 
     // SyncRoutingTable
-    let mut want = data::make_routing_table(&mut rng, &clock.clock());
-    // TODO: validators field is supported only in proto encoding.
-    // Remove this line once borsh support is removed.
-    want.validators = vec![];
+    let want = data::make_routing_table(&mut rng);
     outbound.send(PeerMessage::SyncRoutingTable(want.clone())).await;
     assert_eq!(Event::RoutingTable(want), inbound.events.recv().await);
 
@@ -207,7 +204,7 @@ async fn test_handshake(outbound_encoding: Option<Encoding>, inbound_encoding: O
         sender_peer_id: outbound_cfg.id(),
         target_peer_id: inbound.cfg.id(),
         sender_listen_port: Some(outbound.local_addr.port()),
-        sender_chain_info: outbound_cfg.chain.get_info(),
+        sender_chain_info: outbound_cfg.chain.get_info().into(),
         partial_edge_info: outbound_cfg.partial_edge_info(&inbound.cfg.id(), 1),
     };
     // We will also introduce chain_id mismatch, but ProtocolVersionMismatch is expected to take priority.
@@ -241,7 +238,7 @@ async fn test_handshake(outbound_encoding: Option<Encoding>, inbound_encoding: O
     );
 
     // Send a correct Handshake, expect a matching Handshake response.
-    handshake.sender_chain_info = chain.get_info();
+    handshake.sender_chain_info = chain.get_info().into();
     outbound.write(&PeerMessage::Handshake(handshake.clone())).await;
     let resp = outbound.read().await;
     assert_matches!(resp, PeerMessage::Handshake(_));
