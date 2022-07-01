@@ -1002,17 +1002,28 @@ impl StreamHandler<Result<Vec<u8>, ReasonForBan>> for PeerActor {
             }
             (PeerStatus::Ready, PeerMessage::SyncAccountsDataResponse(data)) => {
                 let pms = self.peer_manager_state.clone();
-                actix::spawn(async move {
+                async move {
                     let chain_info = pms.clone().get_chain_info().await;
                     pms.accounts_data.set_epochs(vec![&chain_info.this_epoch,&chain_info.next_epoch]);
-                    match pms.accounts_data.insert(data).await {
-                        Ok(new_data) => pms.broadcast_message(SendMessage{
-                            message: PeerMessage::SyncAccountsDataResponse(new_data),
-                            context: Span::current().context(),
-                        }).await,
-                        Err(accounts_data::Error::InvalidSignature) => {} // self.ban_peer(ctx, ReasonForBan::InvalidSignature) // TODO: this requires
+                    let ban_reason = match pms.accounts_data.insert(data).await {
+                        Ok(new_data) => {
+                            pms.broadcast_message(SendMessage{
+                                message: PeerMessage::SyncAccountsDataResponse(new_data),
+                                context: Span::current().context(),
+                            }).await;
+                            None
+                        },
+                        Err(accounts_data::Error::InvalidSignature) => Some(ReasonForBan::InvalidSignature),
+                    };
+                    ban_reason
+                }
+                .into_actor(self)
+                .map(|ban_reason, act, ctx| {
+                    if let Some(ban_reason) = ban_reason {
+                        act.ban_peer(ctx, ban_reason);
                     }
-                });
+                })
+                .spawn(ctx);
             }
             (PeerStatus::Ready, PeerMessage::Routed(routed_message)) => {
                 trace!(target: "network", "Received routed message from {} to {:?}.", self.peer_info, routed_message.msg.target);
