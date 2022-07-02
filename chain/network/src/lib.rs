@@ -7,6 +7,10 @@ mod network_protocol;
 mod peer;
 mod peer_manager;
 mod accounts_data;
+
+#[cfg(test)]
+mod accounts_data_test;
+
 pub(crate) mod private_actix;
 pub mod routing;
 pub(crate) mod stats;

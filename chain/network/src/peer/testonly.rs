@@ -236,7 +236,7 @@ impl PeerHandle {
                     Arc::new(PeerManagerState {
                         client_addr: fc.clone().recipient(),
                         view_client_addr: fc.clone().recipient(),
-                        accounts_data: AccountsData::new(),
+                        accounts_data: Arc::new(AccountsData::new()),
                         connected_peers: Default::default(),
                         network_metrics: Default::default(), 
                     })

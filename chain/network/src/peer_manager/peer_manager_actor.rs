@@ -392,7 +392,7 @@ impl PeerManagerActor {
                 view_client_addr,
                 network_metrics: Default::default(),
                 connected_peers: RwLock::new(HashMap::default()),
-                accounts_data: AccountsData::new(),
+                accounts_data: Arc::new(AccountsData::new()),
             }),
         })
     }

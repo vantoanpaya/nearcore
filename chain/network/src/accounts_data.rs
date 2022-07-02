@@ -53,8 +53,11 @@ impl Epoch {
     }
 }
 
+#[derive(thiserror::Error,Debug,PartialEq,Eq)]
 pub(crate) enum Error {
+    #[error("found an invalid signature")]
     InvalidSignature,
+    #[error("found too large payload")]
     DataTooLarge,
 }
 
@@ -85,11 +88,11 @@ pub(crate) struct AccountsData{
 }
 
 impl AccountsData {
-    pub fn new() -> Arc<Self> {
-        Arc::new(Self{
+    pub fn new() -> Self {
+        Self{
             epochs: RwLock::new(Epochs(HashMap::new())),
             runtime: tokio::runtime::Runtime::new().unwrap(),
-        })
+        }
     }
 
     /// Sets new_epochs as active and copies over the keys 
@@ -124,7 +127,7 @@ impl AccountsData {
         let epochs = self.epochs.read();
         for d in &data {
             if d.payload().len()>network_protocol::MAX_ACCOUNT_DATA_SIZE_BYTES {
-                return Err(Error::DataTooLarge)
+                return (vec![],Some(Error::DataTooLarge))
             }
         }
         let data_and_keys : Vec<_> = data.into_iter().filter_map(|d|epochs.with_key(d)).collect();
@@ -145,7 +148,7 @@ impl AccountsData {
 
         // Insert the verified data, even if an error has been encountered.
         let mut epochs = self.epochs.write();
-        Ok(data.into_iter().filter_map(|d|epochs.try_insert(d)).collect(),err)
+        (data.into_iter().filter_map(|d|epochs.try_insert(d)).collect(),err)
     }
 
     /// Copies and returns all the AccountData in the cache.

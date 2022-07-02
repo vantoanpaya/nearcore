@@ -351,7 +351,7 @@ pub fn make_account_data(rng: &mut impl Rng, clock: &time::Clock, account_id: Ac
             },
         ],
         account_id,
-        epoch_id: EpochId::default(),
+        epoch_id: make_epoch_id(rng),
         timestamp: clock.now_utc(),
     }
 }

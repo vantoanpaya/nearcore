@@ -1014,7 +1014,7 @@ impl StreamHandler<Result<Vec<u8>, ReasonForBan>> for PeerActor {
                             context: Span::current().context(),
                         }).await;
                     }
-                    err.map(|err|match {
+                    err.map(|err|match err {
                         accounts_data::Error::InvalidSignature => ReasonForBan::InvalidSignature,
                         accounts_data::Error::DataTooLarge => ReasonForBan::Abusive,
                     })
