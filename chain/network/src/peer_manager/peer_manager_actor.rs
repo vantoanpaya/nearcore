@@ -6,7 +6,7 @@ use crate::private_actix::{
     PeerRequestResult, PeersRequest, RegisterPeer, RegisterPeerResponse, SendMessage, StopMsg,
     Unregister, ValidateEdgeList,
 };
-use crate::accounts_data::AccountsData;
+use crate::accounts_data;
 use crate::private_actix::{PeerToManagerMsg, PeerToManagerMsgResp, PeersResponse};
 use crate::routing;
 use crate::routing::edge_validator_actor::EdgeValidatorHelper;
@@ -152,7 +152,7 @@ pub(crate) struct PeerManagerState {
     /// Address of the view client actor.
     pub view_client_addr: Recipient<NetworkViewClientMessages>,
     
-    pub accounts_data: Arc<AccountsData>,
+    pub accounts_data: Arc<accounts_data::Cache>,
     /// Connected peers (inbound and outbound) with their full peer information.
     pub connected_peers: RwLock<HashMap<PeerId, ConnectedPeer>>,
     /// Dynamic Prometheus metrics
@@ -392,7 +392,7 @@ impl PeerManagerActor {
                 view_client_addr,
                 network_metrics: Default::default(),
                 connected_peers: RwLock::new(HashMap::default()),
-                accounts_data: Arc::new(AccountsData::new()),
+                accounts_data: Arc::new(accounts_data::Cache::new()),
             }),
         })
     }

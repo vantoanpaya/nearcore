@@ -60,17 +60,8 @@ impl TryFrom<&proto::AccountKeyPayload> for AccountData {
 
 //////////////////////////////////////////
 
-// TODO(CPR-74): I took this number out of thin air,
-// determine a reasonable limit later. Calibrate before starting
-// using SignedValidator. Also possibly should be moved
-// to business logic, which actually stores those structs (see TODO
-// below).
-const VALIDATOR_PAYLOAD_MAX_BYTES: usize = 10000;
-
 #[derive(thiserror::Error, Debug)]
 pub enum ParseSignedAccountDataError {
-    #[error("payload too large: {0}B")]
-    PayloadTooLarge(usize),
     #[error("decode: {0}")]
     Decode(protobuf::Error),
     #[error("validator: {0}")]
@@ -92,16 +83,6 @@ impl From<&SignedAccountData> for proto::AccountKeySignedPayload {
 impl TryFrom<&proto::AccountKeySignedPayload> for SignedAccountData {
     type Error = ParseSignedAccountDataError;
     fn try_from(x: &proto::AccountKeySignedPayload) -> Result<Self, Self::Error> {
-        // We definitely should tolerate unknown fields, so that we can do
-        // backward compatible changes. We also need to limit the total
-        // size of the payload, to prevent large message attacks.
-        // TODO(CPR-74): is this the right place to do this check? Should we do the same while encoding?
-        // An alternative would be to do this check in the business logic of PeerManagerActor,
-        // probably together with signature validation. The amount of memory a node
-        // maintains per validator should be bounded.
-        if x.payload.len() > VALIDATOR_PAYLOAD_MAX_BYTES {
-            return Err(Self::Error::PayloadTooLarge(x.payload.len()));
-        }
         let account_data =
             proto::AccountKeyPayload::parse_from_bytes(&x.payload).map_err(Self::Error::Decode)?;
         Ok(Self {

@@ -32,13 +32,13 @@ use protobuf::Message as _;
 use std::fmt;
 use thiserror::Error;
 
-#[derive(PartialEq, Eq, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash)]
 pub struct PeerAddr {
     addr: std::net::SocketAddr,
     peer_id: Option<PeerId>,
 }
 
-#[derive(PartialEq, Eq, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash)]
 pub struct AccountData {
     pub peers: Vec<PeerAddr>,
     pub account_id: AccountId,
@@ -64,7 +64,7 @@ impl AccountData {
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash)]
 pub struct AccountKeySignedPayload {
     payload: Vec<u8>,
     signature: near_crypto::Signature,
@@ -81,7 +81,7 @@ impl AccountKeySignedPayload {
 
 // TODO(gprusak): if we expect this to be large, perhaps we should
 // pass around an Arc, rather than pass it by value.
-#[derive(PartialEq, Eq, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash)]
 pub struct SignedAccountData {
     account_data: AccountData,
     // serialized and signed validator.

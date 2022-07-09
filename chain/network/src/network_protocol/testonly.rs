@@ -360,3 +360,13 @@ pub fn make_signed_account_data(rng: &mut impl Rng, clock: &time::Clock) -> Sign
     let signer = make_signer(rng);
     make_account_data(rng, clock, signer.account_id.clone()).sign(&signer).unwrap()
 }
+
+// Accessors for creating malformed SignedAccountData
+impl SignedAccountData {
+    pub(crate) fn payload_mut(&mut self) -> &mut Vec<u8> {
+        &mut self.payload.payload
+    }
+    pub(crate) fn signature_mut(&mut self) -> &mut near_crypto::Signature {
+        &mut self.payload.signature
+    }
+}

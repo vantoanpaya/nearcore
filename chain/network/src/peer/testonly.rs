@@ -1,7 +1,7 @@
 use crate::broadcast;
 use crate::network_protocol::testonly as data;
 use crate::peer_manager::peer_manager_actor::PeerManagerState;
-use crate::accounts_data::AccountsData;
+use crate::accounts_data;
 use crate::peer::codec::Codec;
 use crate::peer::peer_actor::PeerActor;
 use crate::private_actix::{PeerRequestResult, RegisterPeerResponse, SendMessage};
@@ -236,7 +236,7 @@ impl PeerHandle {
                     Arc::new(PeerManagerState {
                         client_addr: fc.clone().recipient(),
                         view_client_addr: fc.clone().recipient(),
-                        accounts_data: Arc::new(AccountsData::new()),
+                        accounts_data: Arc::new(accounts_data::Cache::new()),
                         connected_peers: Default::default(),
                         network_metrics: Default::default(), 
                     })
