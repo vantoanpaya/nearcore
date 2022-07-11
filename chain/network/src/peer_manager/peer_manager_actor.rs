@@ -1,6 +1,6 @@
 use crate::network_protocol::Encoding;
 use crate::peer::codec::Codec;
-use crate::peer::peer_actor::PeerActor;
+use crate::peer::peer_actor::{PeerActor,Event as PeerEvent};
 use crate::peer_manager::peer_store::PeerStore;
 use crate::private_actix::{
     PeerRequestResult, PeersRequest, RegisterPeer, RegisterPeerResponse, SendMessage, StopMsg,
@@ -256,6 +256,7 @@ pub enum Event {
     ServerStarted,
     RoutedMessageDropped,
     RoutingTableUpdate(Arc<routing::RoutingTable>),
+    Peer(PeerEvent),
     Ping(Ping),
     Pong(Pong),
 }
@@ -866,6 +867,7 @@ impl PeerManagerActor {
         peer_counter.fetch_add(1, Ordering::SeqCst);
         let clock = self.clock.clone();
         let state = self.state.clone();
+        let event_sink = self.event_sink.clone();
         PeerActor::start_in_arbiter(&arbiter.handle(), move |ctx| {
             let (read, write) = tokio::io::split(stream);
 
@@ -900,6 +902,7 @@ impl PeerManagerActor {
                 rate_limiter,
                 None,
                 state,
+                event_sink.compose(Event::Peer),
             )
         });
     }

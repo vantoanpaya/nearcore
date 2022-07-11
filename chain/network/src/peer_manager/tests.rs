@@ -1,10 +1,12 @@
 use crate::network_protocol::testonly as data;
 use crate::network_protocol::Encoding;
+use crate::network_protocol::AccountData;
 use crate::peer;
+use crate::peer::peer_actor;
 use crate::peer_manager;
 use crate::peer_manager::peer_manager_actor::Event as PME;
 use crate::peer_manager::testonly::Event;
-use crate::testonly::make_rng;
+use crate::testonly::{make_rng, AsSet as _};
 use crate::types::{PeerMessage, RoutingTableUpdate};
 use near_logger_utils::init_test_logger;
 use near_network_primitives::time;
@@ -146,4 +148,79 @@ async fn ttl() {
             assert_eq!(msg.ttl - 1, got.ttl);
         }
     }
+}
+
+#[tokio::test]
+async fn accounts_data_broadcast() {
+    init_test_logger();
+    let mut rng = make_rng(921853233);
+    let rng = &mut rng;
+    let mut clock = time::FakeClock::default();
+    let port = crate::test_utils::open_port();
+    let chain = Arc::new(data::Chain::make(&mut clock, rng, 10));
+    let pm =
+        peer_manager::testonly::start(chain.clone(), NetworkConfig::from_seed("test1", port)).await;
+
+    let add_peer = |signer| async { 
+        let cfg = peer::testonly::PeerConfig {
+            signer,
+            chain: chain.clone(),
+            peers: vec![],
+            start_handshake_with: Some(PeerId::new(pm.cfg.node_key.public_key())),
+            force_encoding: Some(Encoding::Proto),
+        };
+        let stream = TcpStream::connect(pm.cfg.node_addr.unwrap()).await.unwrap();
+        let mut peer = peer::testonly::PeerHandle::start_endpoint(clock.clock(), cfg, stream).await;
+        peer.complete_handshake().await;
+        peer
+    };
+    
+    let take_accounts_data = |ev|match ev {
+        peer::testonly::Event::Peer(peer_actor::Event::MessageProcessed(PeerMessage::SyncAccountsDataResponse(data)))
+            => Some(data),
+        _ => None,
+    };
+  
+    let data : Vec<_> = chain.this_epoch.iter().map(|signer|{
+        let ip = data::make_ipv6(rng);
+        let peer_addr = data::make_peer_addr(rng,ip);
+        AccountData {
+            peers: vec![peer_addr],
+            account_id: signer.account_id.clone(),
+            epoch_id: chain.tip().epoch_id().clone(),
+            timestamp: clock.now_utc(),
+        }.sign(signer).unwrap()
+    }).collect();
+
+    // Connect a peer, expect full sync (empty).
+    let mut peer1 = add_peer(data::make_signer(rng)).await;
+    let got1 = peer1.events.recv_until(take_accounts_data).await;
+    assert_eq!(got1,vec![]);
+
+    // Send some data and wait for it to be broadcasted back.
+    let msg = vec![data[0].clone(),data[1].clone()];
+    let want = msg.clone();
+    peer1.send(PeerMessage::SyncAccountsDataResponse(msg)).await;
+    let got1 = peer1.events.recv_until(take_accounts_data).await;
+    assert_eq!(got1.as_set(),want.as_set());
+    
+    // Connect another peer and wait for full sync.
+    let mut peer2 = add_peer(data::make_signer(rng)).await;
+    let got2 = peer2.events.recv_until(take_accounts_data).await;
+    assert_eq!(got2.as_set(),want.as_set());
+
+    // Send a mix of new and old data. Only new data should be broadcasted.
+    let msg = vec![data[1].clone(),data[2].clone()];
+    let want = vec![data[2].clone()];
+    peer1.send(PeerMessage::SyncAccountsDataResponse(msg)).await;
+    let got1 = peer1.events.recv_until(take_accounts_data).await;
+    let got2 = peer2.events.recv_until(take_accounts_data).await;
+    assert_eq!(got1.as_set(),want.as_set());
+    assert_eq!(got2.as_set(),want.as_set());
+
+    // Send a request for a full sync.
+    let want = vec![data[0].clone(),data[1].clone(),data[2].clone()];
+    peer1.send(PeerMessage::SyncAccountsDataRequest).await;
+    let got1 = peer1.events.recv_until(take_accounts_data).await;
+    assert_eq!(got1.as_set(),want.as_set());
 }

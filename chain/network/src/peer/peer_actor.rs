@@ -1,6 +1,7 @@
 use crate::network_protocol::{Encoding, ParsePeerMessageError};
 use crate::peer::codec::Codec;
 use crate::peer::tracker::Tracker;
+use crate::sink::Sink;
 use crate::private_actix::PeersResponse;
 use crate::private_actix::{PeerToManagerMsg, PeerToManagerMsgResp};
 use crate::private_actix::{
@@ -63,6 +64,23 @@ const ROUTED_MESSAGE_CACHE_SIZE: usize = 1000;
 /// Duplicated messages will be dropped if routed through the same peer multiple times.
 const DROP_DUPLICATED_MESSAGES_PERIOD: time::Duration = time::Duration::milliseconds(50);
 
+// TEST-ONLY
+#[derive(Debug,PartialEq,Eq,Clone)]
+pub enum Event {
+    // Reported once a message has been processed.
+    // In contrast to typical RPC protocols, many P2P messages do not trigger
+    // sending a response at the end of processing.
+    // However, for precise instrumentation in tests it is useful to know when
+    // processing has been finished. We simulate the "RPC response" by reporting
+    // an event MessageProcessed.
+    // 
+    // Given that processing is asynchronous and unstructured as of now,
+    // it is hard to pinpoint all the places when the processing of a message is
+    // actually complete. Currently this event is reported only for some message types,
+    // feel free to add support for more.
+    MessageProcessed(PeerMessage),
+}
+
 pub(crate) struct PeerActor {
     clock: time::Clock,
     /// This node's id and address (either listening or socket address).
@@ -113,6 +131,8 @@ pub(crate) struct PeerActor {
     force_encoding: Option<Encoding>,
 
     peer_manager_state : Arc<PeerManagerState>,
+    /// test-only.
+    event_sink : Sink<Event>, 
 }
 
 impl Debug for PeerActor {
@@ -148,6 +168,7 @@ impl PeerActor {
         throttle_controller: ThrottleController,
         force_encoding: Option<Encoding>,
         peer_manager_state: Arc<PeerManagerState>,
+        event_sink : Sink<Event>,
     ) -> Self {
         let now = clock.now();
         PeerActor {
@@ -174,6 +195,7 @@ impl PeerActor {
             protocol_buffers_supported: false,
             force_encoding,
             peer_manager_state,
+            event_sink,
         }
     }
 
@@ -732,7 +754,7 @@ impl StreamHandler<Result<Vec<u8>, ReasonForBan>> for PeerActor {
                 .inc_by(msg.len() as u64);
         }
 
-        match (self.peer_status, peer_msg) {
+        match (self.peer_status, peer_msg.clone()) {
             (_, PeerMessage::HandshakeFailure(peer_info, reason)) => {
                 match reason {
                     HandshakeFailureReason::GenesisMismatch(genesis) => {
@@ -871,6 +893,10 @@ impl StreamHandler<Result<Vec<u8>, ReasonForBan>> for PeerActor {
                                     act.partial_edge_info = edge_info;
                                     act.send_handshake(ctx);
                                 }
+                                // Initall full accounts data sync.
+                                act.send_message_or_log(&PeerMessage::SyncAccountsDataResponse(
+                                    act.peer_manager_state.accounts_data.dump()
+                                ));
                                 actix::fut::ready(())
                             },
                             Ok(RegisterPeerResponse::InvalidNonce(edge)) => {
@@ -1000,7 +1026,24 @@ impl StreamHandler<Result<Vec<u8>, ReasonForBan>> for PeerActor {
                 let accounts_data = self.peer_manager_state.accounts_data.dump();
                 self.send_message_or_log(&PeerMessage::SyncAccountsDataResponse(accounts_data));
             }
-            (PeerStatus::Ready, PeerMessage::SyncAccountsDataResponse(data)) => {
+            // Note that we handle SyncAccountsDataResponse no matter what is the state of the
+            // connection. Therefore it may happen that we handle a message from a banned peer.
+            // It is a simplification. If we required READY state, the following may happen:
+            // - A sends handshake to B
+            // - B accepts the handshake, then sends handshake to A and immediately after sends
+            //   SyncAccountsDataResponse.
+            // - A handles SyncAccountsDataResponse before Handshake handler completes,
+            //   dropping it since it is still in CONNECTING state.
+            // This may happen because, even though messages are delivered in order, because
+            // the handlers do asynchronous stuff and there is no guarantee that their execution
+            // won't overlap.
+            //
+            // Alternatives are:
+            // a) embed SyncAccountsDataResponse in the Handshake
+            // b) wait for a while before sending SyncAccountsDataResponse (ugly heuristic)
+            // c) let A first send the initial SyncAccountsDataResponse, which would trigger B to
+            //    respond (4-way handshake in a sense) 
+            (_, PeerMessage::SyncAccountsDataResponse(data)) => {
                 let pms = self.peer_manager_state.clone();
                 async move {
                     let chain_info = pms.clone().get_chain_info().await;
@@ -1025,6 +1068,7 @@ impl StreamHandler<Result<Vec<u8>, ReasonForBan>> for PeerActor {
                     if let Some(ban_reason) = ban_reason {
                         act.ban_peer(ctx, ban_reason);
                     }
+                    act.event_sink.push(Event::MessageProcessed(peer_msg));
                 })
                 .spawn(ctx);
             }

@@ -3,6 +3,7 @@ use crate::network_protocol::testonly as data;
 use crate::peer_manager::peer_manager_actor::PeerManagerState;
 use crate::accounts_data;
 use crate::peer::codec::Codec;
+use crate::peer::peer_actor;
 use crate::peer::peer_actor::PeerActor;
 use crate::private_actix::{PeerRequestResult, RegisterPeerResponse, SendMessage};
 use crate::private_actix::{PeerToManagerMsg, PeerToManagerMsgResp};
@@ -57,7 +58,7 @@ impl PeerConfig {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Event {
+pub(crate) enum Event {
     HandshakeDone(Edge),
     Routed(Box<RoutedMessageV2>),
     RoutingTable(RoutingTableUpdate),
@@ -65,6 +66,7 @@ pub enum Event {
     ResponseUpdateNonce(Edge),
     PeersResponse(Vec<PeerInfo>),
     Client(fake_client::Event),
+    Peer(peer_actor::Event),
 }
 
 struct FakePeerManagerActor {
@@ -154,9 +156,9 @@ impl Handler<PeerToManagerMsg> for FakePeerManagerActor {
 }
 
 pub struct PeerHandle {
-    pub cfg: Arc<PeerConfig>,
+    pub(crate) cfg: Arc<PeerConfig>,
     actix: ActixSystem<PeerActor>,
-    pub events: broadcast::Receiver<Event>,
+    pub(crate) events: broadcast::Receiver<Event>,
 }
 
 impl PeerHandle {
@@ -239,7 +241,8 @@ impl PeerHandle {
                         accounts_data: Arc::new(accounts_data::Cache::new()),
                         connected_peers: Default::default(),
                         network_metrics: Default::default(), 
-                    })
+                    }),
+                    send.sink().compose(Event::Peer),
                 )
             })
         })

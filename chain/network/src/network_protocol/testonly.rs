@@ -230,13 +230,10 @@ pub fn make_epoch_id<R:Rng>(rng: &mut R) -> EpochId {
     EpochId(CryptoHash::hash_bytes(&rng.gen::<[u8;19]>()))
 }
 
-pub fn make_epoch_info<R:Rng>(rng: &mut R) -> EpochInfo {
+pub fn make_epoch_info(id:EpochId, signers: &[InMemorySigner]) -> EpochInfo {
     EpochInfo{
-        id: make_epoch_id(rng),
-        priority_accounts: (0..5)
-            .map(|_|make_signer(rng))
-            .map(|s|(s.account_id,s.public_key))
-            .collect(),
+        id,
+        priority_accounts: signers.iter().map(|s|(s.account_id.clone(),s.public_key.clone())).collect(),
     }
 }
 
@@ -244,8 +241,8 @@ pub struct Chain {
     pub genesis_id: GenesisId,
     pub blocks: Vec<Block>,
     pub chunks: HashMap<ChunkHash, ShardChunk>,
-    pub this_epoch: Arc<EpochInfo>,
-    pub next_epoch: Arc<EpochInfo>,
+    pub this_epoch: Vec<InMemorySigner>,
+    pub next_epoch: Vec<InMemorySigner>,
 }
 
 impl Chain {
@@ -264,14 +261,18 @@ impl Chain {
                 hash: Default::default(),
             },
             blocks,
-            this_epoch: Arc::new(make_epoch_info(rng)), 
-            next_epoch: Arc::new(make_epoch_info(rng)),
+            this_epoch: (0..5).map(|_|make_signer(rng)).collect(),
+            next_epoch: (0..5).map(|_|make_signer(rng)).collect(),
             chunks: chunks.chunks,
         }
     }
 
     pub fn height(&self) -> BlockHeight {
-        self.blocks.last().unwrap().header().height()
+        self.tip().height()
+    }
+
+    pub fn tip(&self) -> &BlockHeader {
+        self.blocks.last().unwrap().header()
     }
 
     pub fn get_info(&self) -> ChainInfo {
@@ -281,8 +282,8 @@ impl Chain {
             archival: false,
             
             height: self.height(),
-            this_epoch: self.this_epoch.clone(),
-            next_epoch: self.next_epoch.clone(),
+            this_epoch: Arc::new(make_epoch_info(self.tip().epoch_id().clone(), &self.this_epoch)),
+            next_epoch: Arc::new(make_epoch_info(self.tip().next_epoch_id().clone(), &self.next_epoch)),
         }
     }
 

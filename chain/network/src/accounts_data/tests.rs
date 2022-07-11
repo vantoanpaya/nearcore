@@ -1,15 +1,13 @@
 use crate::accounts_data::*;
-use crate::testonly::{make_rng,Rng};
+use crate::testonly::{make_rng,Rng,AsSet as _};
 use crate::network_protocol::{AccountData,SignedAccountData};
 use crate::network_protocol::testonly as data;
 use near_crypto::{SecretKey,InMemorySigner};
 use near_primitives::types::{AccountId,EpochId};
 use near_network_primitives::types::{EpochInfo};
 use near_network_primitives::time;
-use std::collections::{HashMap,HashSet};
+use std::collections::{HashMap};
 use std::sync::Arc;
-use std::hash::Hash;
-use std::cmp::Eq;
 use pretty_assertions::{assert_eq};
 
 #[derive(Default)]
@@ -45,22 +43,6 @@ impl Signers {
             epoch_id: epoch_id.clone(),
             timestamp,
         }.sign(&signer).unwrap()
-    }
-}
-
-trait AsSet<'a,T> {
-    fn as_set(&'a self) -> HashSet<&'a T>;
-}
-
-impl<'a,T:Hash+Eq> AsSet<'a,T> for Vec<T> {
-    fn as_set(&'a self) -> HashSet<&'a T> {
-        self.iter().collect()
-    }
-}
-
-impl<'a,T:Hash+Eq> AsSet<'a,T> for [&'a T] {
-    fn as_set(&'a self) -> HashSet<&'a T> {
-        self.iter().cloned().collect()
     }
 }
 
