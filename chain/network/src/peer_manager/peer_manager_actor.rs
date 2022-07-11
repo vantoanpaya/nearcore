@@ -249,7 +249,7 @@ pub struct PeerManagerActor {
     /// test-only.
     event_sink: Sink<Event>,
 
-    state: Arc<PeerManagerState>,
+    pub(crate) state: Arc<PeerManagerState>,
 }
 
 // test-only

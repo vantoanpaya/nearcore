@@ -232,7 +232,7 @@ impl Handler<GetBroadcastMessageCount> for PeerManagerActor {
     type Result = u64;
 
     fn handle(&mut self, msg: GetBroadcastMessageCount, _ctx: &mut Context<Self>) -> Self::Result {
-        self.network_metrics.get_broadcast_count(msg.msg_type)
+        self.state.network_metrics.get_broadcast_count(msg.msg_type)
     }
 }
 
