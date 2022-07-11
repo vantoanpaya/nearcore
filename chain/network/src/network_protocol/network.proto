@@ -16,8 +16,9 @@ import "google/protobuf/timestamp.proto";
 // should be in serialized form.
 // TODO: move to a separate file, probably in a separate package.
 message AccountKeyPayload {
+  reserved 1;
   oneof payload_type {
-    AccountData account_data = 1;
+    AccountData account_data = 2;
   }
 }
 
