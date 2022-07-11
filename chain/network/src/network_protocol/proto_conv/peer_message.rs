@@ -3,7 +3,7 @@ use super::*;
 
 use crate::network_protocol::proto;
 use crate::network_protocol::proto::peer_message::Message_type as ProtoMT;
-use crate::network_protocol::{PeerMessage, RoutingTableUpdate};
+use crate::network_protocol::{PeerMessage, RoutingTableUpdate, SyncAccountsData};
 use borsh::{BorshDeserialize as _, BorshSerialize as _};
 use near_network_primitives::time::error::ComponentRange;
 use near_network_primitives::types::{RoutedMessage, RoutedMessageV2};
@@ -103,14 +103,11 @@ impl From<&PeerMessage> for proto::PeerMessage {
                         ..Default::default()
                     })
                 }
-                PeerMessage::SyncAccountsDataRequest => ProtoMT::SyncAccountsDataRequest(
-                    proto::SyncAccountsDataRequest{
-                        ..Default::default()
-                    }
-                ),
-                PeerMessage::SyncAccountsDataResponse(data) => ProtoMT::SyncAccountsDataResponse(
-                    proto::SyncAccountsDataResponse{
-                        data: data.iter().map(Into::into).collect(),
+                PeerMessage::SyncAccountsData(msg) => ProtoMT::SyncAccountsData(
+                    proto::SyncAccountsData{
+                        accounts_data: msg.accounts_data.iter().map(Into::into).collect(),
+                        incremental: msg.incremental,
+                        requesting_full_sync: msg.requesting_full_sync,
                         ..Default::default()
                     }
                 ),
@@ -231,8 +228,8 @@ pub enum ParsePeerMessageError {
     EpochSyncFinalizationResponse(ParseEpochSyncFinalizationResponseError),
     #[error("routed_created_at: {0}")]
     RoutedCreatedAtTimestamp(ComponentRange),
-    #[error("sync_accounts_data_response: {0}")]
-    SyncAccountsDataResponse(ParseVecError<ParseSignedAccountDataError>),
+    #[error("sync_accounts_data: {0}")]
+    SyncAccountsData(ParseVecError<ParseSignedAccountDataError>),
 }
 
 impl TryFrom<&proto::PeerMessage> for PeerMessage {
@@ -259,10 +256,11 @@ impl TryFrom<&proto::PeerMessage> for PeerMessage {
             ProtoMT::UpdateNonceResponse(unr) => PeerMessage::ResponseUpdateNonce(
                 try_from_required(&unr.edge).map_err(Self::Error::UpdateNonceResponse)?,
             ),
-            ProtoMT::SyncAccountsDataRequest(_) => PeerMessage::SyncAccountsDataRequest,
-            ProtoMT::SyncAccountsDataResponse(ads) => PeerMessage::SyncAccountsDataResponse(
-                try_from_slice(&ads.data).map_err(Self::Error::SyncAccountsDataResponse)?,
-            ),
+            ProtoMT::SyncAccountsData(msg) => PeerMessage::SyncAccountsData(SyncAccountsData{
+                accounts_data: try_from_slice(&msg.accounts_data).map_err(Self::Error::SyncAccountsData)?,
+                incremental: msg.incremental,
+                requesting_full_sync: msg.requesting_full_sync,
+            }),
             ProtoMT::PeersRequest(_) => PeerMessage::PeersRequest,
             ProtoMT::PeersResponse(pr) => PeerMessage::PeersResponse(
                 try_from_slice(&pr.peers).map_err(Self::Error::PeersResponse)?,

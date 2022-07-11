@@ -158,9 +158,8 @@ impl From<&mem::PeerMessage> for net::PeerMessage {
             mem::PeerMessage::RequestUpdateNonce(e) => net::PeerMessage::RequestUpdateNonce(e),
             mem::PeerMessage::ResponseUpdateNonce(e) => net::PeerMessage::ResponseUpdateNonce(e),
 
-            // These messages are not supported, we translate them to an empty RoutingTableUpdate.
-            mem::PeerMessage::SyncAccountsDataRequest => net::PeerMessage::SyncRoutingTable(net::RoutingTableUpdate::default()),
-            mem::PeerMessage::SyncAccountsDataResponse(_) => net::PeerMessage::SyncRoutingTable(net::RoutingTableUpdate::default()),
+            // This message is not supported, we translate it to an empty RoutingTableUpdate.
+            mem::PeerMessage::SyncAccountsData(_) => net::PeerMessage::SyncRoutingTable(net::RoutingTableUpdate::default()),
 
             mem::PeerMessage::PeersRequest => net::PeerMessage::PeersRequest,
             mem::PeerMessage::PeersResponse(pis) => net::PeerMessage::PeersResponse(pis),

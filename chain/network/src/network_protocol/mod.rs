@@ -165,6 +165,13 @@ pub enum HandshakeFailureReason {
     InvalidTarget,
 }
 
+#[derive(PartialEq, Eq, Clone, Debug)]
+pub struct SyncAccountsData {
+    pub accounts_data: Vec<SignedAccountData>,
+    pub requesting_full_sync: bool,
+    pub incremental: bool,
+}
+
 #[derive(PartialEq, Eq, Clone, Debug, strum::IntoStaticStr, strum::EnumVariantNames)]
 #[allow(clippy::large_enum_variant)]
 pub enum PeerMessage {
@@ -177,8 +184,7 @@ pub enum PeerMessage {
     RequestUpdateNonce(PartialEdgeInfo),
     ResponseUpdateNonce(Edge),
 
-    SyncAccountsDataRequest,
-    SyncAccountsDataResponse(Vec<SignedAccountData>),
+    SyncAccountsData(SyncAccountsData),
 
     PeersRequest,
     PeersResponse(Vec<PeerInfo>),

@@ -1,6 +1,6 @@
 use crate::network_protocol::testonly as data;
 use crate::network_protocol::Encoding;
-use crate::network_protocol::AccountData;
+use crate::network_protocol::{AccountData,SyncAccountsData};
 use crate::peer;
 use crate::peer::peer_actor;
 use crate::peer_manager;
@@ -17,6 +17,7 @@ use rand::Rng as _;
 use std::collections::HashSet;
 use std::sync::Arc;
 use tokio::net::TcpStream;
+use pretty_assertions::{assert_eq};
 
 // After the initial exchange, all subsequent SyncRoutingTable messages are
 // expected to contain only the diff of the known data.
@@ -172,12 +173,17 @@ async fn accounts_data_broadcast() {
         let stream = TcpStream::connect(pm.cfg.node_addr.unwrap()).await.unwrap();
         let mut peer = peer::testonly::PeerHandle::start_endpoint(clock.clock(), cfg, stream).await;
         peer.complete_handshake().await;
-        peer
+        // TODO(gprusak): this should be part of complete_handshake, once Borsh support is removed.
+        let msg = match peer.events.recv().await {
+            peer::testonly::Event::Peer(peer_actor::Event::MessageProcessed(PeerMessage::SyncAccountsData(msg))) => msg,
+            ev => panic!("expected SyncAccountsData, got {ev:?}"),
+        };
+        (peer,msg)
     };
     
-    let take_accounts_data = |ev|match ev {
-        peer::testonly::Event::Peer(peer_actor::Event::MessageProcessed(PeerMessage::SyncAccountsDataResponse(data)))
-            => Some(data),
+    let take_sync = |ev|match ev {
+        peer::testonly::Event::Peer(peer_actor::Event::MessageProcessed(PeerMessage::SyncAccountsData(msg)))
+            => Some(msg),
         _ => None,
     };
   
@@ -191,36 +197,46 @@ async fn accounts_data_broadcast() {
             timestamp: clock.now_utc(),
         }.sign(signer).unwrap()
     }).collect();
-
-    // Connect a peer, expect full sync (empty).
-    let mut peer1 = add_peer(data::make_signer(rng)).await;
-    let got1 = peer1.events.recv_until(take_accounts_data).await;
-    assert_eq!(got1,vec![]);
+    
+    // Connect peer, expect initial sync to be empty.
+    let (mut peer1,got1) = add_peer(data::make_signer(rng)).await;
+    assert_eq!(got1.accounts_data,vec![]);
 
     // Send some data and wait for it to be broadcasted back.
-    let msg = vec![data[0].clone(),data[1].clone()];
-    let want = msg.clone();
-    peer1.send(PeerMessage::SyncAccountsDataResponse(msg)).await;
-    let got1 = peer1.events.recv_until(take_accounts_data).await;
-    assert_eq!(got1.as_set(),want.as_set());
+    let msg = SyncAccountsData{
+        accounts_data: vec![data[0].clone(),data[1].clone()],
+        incremental: true,
+        requesting_full_sync: false,
+    };
+    let want = msg.accounts_data.clone();
+    peer1.send(PeerMessage::SyncAccountsData(msg)).await;
+    let got1 = peer1.events.recv_until(take_sync).await;
+    assert_eq!(got1.accounts_data.as_set(),want.as_set());
     
-    // Connect another peer and wait for full sync.
-    let mut peer2 = add_peer(data::make_signer(rng)).await;
-    let got2 = peer2.events.recv_until(take_accounts_data).await;
-    assert_eq!(got2.as_set(),want.as_set());
+    // Connect another peer and perform initial full sync.
+    let (mut peer2,got2) = add_peer(data::make_signer(rng)).await;
+    assert_eq!(got2.accounts_data.as_set(),want.as_set());
 
     // Send a mix of new and old data. Only new data should be broadcasted.
-    let msg = vec![data[1].clone(),data[2].clone()];
+    let msg = SyncAccountsData{
+        accounts_data: vec![data[1].clone(),data[2].clone()],
+        incremental: true,
+        requesting_full_sync: false,
+    };
     let want = vec![data[2].clone()];
-    peer1.send(PeerMessage::SyncAccountsDataResponse(msg)).await;
-    let got1 = peer1.events.recv_until(take_accounts_data).await;
-    let got2 = peer2.events.recv_until(take_accounts_data).await;
-    assert_eq!(got1.as_set(),want.as_set());
-    assert_eq!(got2.as_set(),want.as_set());
+    peer1.send(PeerMessage::SyncAccountsData(msg)).await;
+    let got1 = peer1.events.recv_until(take_sync).await;
+    let got2 = peer2.events.recv_until(take_sync).await;
+    assert_eq!(got1.accounts_data.as_set(),want.as_set());
+    assert_eq!(got2.accounts_data.as_set(),want.as_set());
 
     // Send a request for a full sync.
     let want = vec![data[0].clone(),data[1].clone(),data[2].clone()];
-    peer1.send(PeerMessage::SyncAccountsDataRequest).await;
-    let got1 = peer1.events.recv_until(take_accounts_data).await;
-    assert_eq!(got1.as_set(),want.as_set());
+    peer1.send(PeerMessage::SyncAccountsData(SyncAccountsData{
+        accounts_data: vec![],
+        incremental: true,
+        requesting_full_sync: true,
+    })).await;
+    let got1 = peer1.events.recv_until(take_sync).await;
+    assert_eq!(got1.accounts_data.as_set(),want.as_set());
 }

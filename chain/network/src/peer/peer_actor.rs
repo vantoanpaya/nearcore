@@ -1,4 +1,4 @@
-use crate::network_protocol::{Encoding, ParsePeerMessageError};
+use crate::network_protocol::{SyncAccountsData, Encoding, ParsePeerMessageError};
 use crate::peer::codec::Codec;
 use crate::peer::tracker::Tracker;
 use crate::sink::Sink;
@@ -555,8 +555,7 @@ impl PeerActor {
             | PeerMessage::BlockHeadersRequest(_)
             | PeerMessage::EpochSyncRequest(_)
             | PeerMessage::EpochSyncFinalizationRequest(_)
-            | PeerMessage::SyncAccountsDataRequest
-            | PeerMessage::SyncAccountsDataResponse(_) => {
+            | PeerMessage::SyncAccountsData(_) => {
                 error!(target: "network", "Peer receive_client_message received unexpected type: {:?}", msg);
                 return;
             }
@@ -892,11 +891,15 @@ impl StreamHandler<Result<Vec<u8>, ReasonForBan>> for PeerActor {
                                 if act.peer_type == PeerType::Inbound {
                                     act.partial_edge_info = edge_info;
                                     act.send_handshake(ctx);
+                                } else {
+                                    // Outbound peer triggers the inital full accounts data sync.
+                                    // TODO(gprusak): implement triggering the periodic full sync.
+                                    act.send_message_or_log(&PeerMessage::SyncAccountsData(SyncAccountsData{
+                                        accounts_data: act.peer_manager_state.accounts_data.dump(),
+                                        incremental: false,
+                                        requesting_full_sync: true,
+                                    }));
                                 }
-                                // Initall full accounts data sync.
-                                act.send_message_or_log(&PeerMessage::SyncAccountsDataResponse(
-                                    act.peer_manager_state.accounts_data.dump()
-                                ));
                                 actix::fut::ready(())
                             },
                             Ok(RegisterPeerResponse::InvalidNonce(edge)) => {
@@ -1022,38 +1025,37 @@ impl StreamHandler<Result<Vec<u8>, ReasonForBan>> for PeerActor {
                         Some(self.throttle_controller.clone()),
                     ));
             }
-            (PeerStatus::Ready, PeerMessage::SyncAccountsDataRequest) => {
-                let accounts_data = self.peer_manager_state.accounts_data.dump();
-                self.send_message_or_log(&PeerMessage::SyncAccountsDataResponse(accounts_data));
-            }
-            // Note that we handle SyncAccountsDataResponse no matter what is the state of the
-            // connection. Therefore it may happen that we handle a message from a banned peer.
-            // It is a simplification. If we required READY state, the following may happen:
-            // - A sends handshake to B
-            // - B accepts the handshake, then sends handshake to A and immediately after sends
-            //   SyncAccountsDataResponse.
-            // - A handles SyncAccountsDataResponse before Handshake handler completes,
-            //   dropping it since it is still in CONNECTING state.
-            // This may happen because, even though messages are delivered in order, because
-            // the handlers do asynchronous stuff and there is no guarantee that their execution
-            // won't overlap.
-            //
-            // Alternatives are:
-            // a) embed SyncAccountsDataResponse in the Handshake
-            // b) wait for a while before sending SyncAccountsDataResponse (ugly heuristic)
-            // c) let A first send the initial SyncAccountsDataResponse, which would trigger B to
-            //    respond (4-way handshake in a sense) 
-            (_, PeerMessage::SyncAccountsDataResponse(data)) => {
+            (PeerStatus::Ready, PeerMessage::SyncAccountsData(msg)) => {
                 let pms = self.peer_manager_state.clone();
+                // In case a full sync is requested, immediately send what we got.
+                // It is a microoptimization: we do not send back the data we just received.
+                if msg.requesting_full_sync {
+                    self.send_message_or_log(&PeerMessage::SyncAccountsData(SyncAccountsData{
+                        requesting_full_sync: false,
+                        incremental: false,
+                        accounts_data: pms.accounts_data.dump(),
+                    }));
+                }
                 async move {
+                    // Early exit, if there is no data in the message.
+                    if msg.accounts_data.is_empty() {
+                        return None;
+                    }
+                    // Check if the chain progressed to the next epoch.
                     let chain_info = pms.clone().get_chain_info().await;
                     pms.accounts_data.set_epochs(vec![&chain_info.this_epoch,&chain_info.next_epoch]);
-                    let (new_data,err) = pms.accounts_data.clone().insert(data).await;
+                    // Verify and add the new data to the internal state.
+                    let (new_data,err) = pms.accounts_data.clone().insert(msg.accounts_data).await;
+                    // Broadcast any new data we have found.
                     // TODO(gprusak): this should be rate limited - diffs should be aggregated,
                     // unless there was no recent broadcast of this type.
                     if new_data.len()>0 {
                         pms.broadcast_message(SendMessage{
-                            message: PeerMessage::SyncAccountsDataResponse(new_data),
+                            message: PeerMessage::SyncAccountsData(SyncAccountsData{
+                                incremental: true,
+                                requesting_full_sync: false,
+                                accounts_data: new_data,
+                            }),
                             context: Span::current().context(),
                         }).await;
                     }

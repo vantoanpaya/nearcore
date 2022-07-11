@@ -174,7 +174,7 @@ impl PeerHandle {
         match self.events.recv().await {
             Event::HandshakeDone(edge) => edge,
             ev => panic!("want HandshakeDone, got {ev:?}"),
-        }
+        } 
     }
 
     pub fn routed_message(

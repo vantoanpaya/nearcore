@@ -230,13 +230,17 @@ message UpdateNonceResponse {
   Edge edge = 1;
 }
 
-message SyncAccountsDataRequest {}
-
-message SyncAccountsDataResponse {
+message SyncAccountsData {
   // Data about the (important) accounts,
   // which should be broadcasted to the whole network.
   // Contains AccountKeyPayload.account_data.
-  repeated AccountKeySignedPayload data = 4;
+  repeated AccountKeySignedPayload accounts_data = 1;
+  // Indicates whether this message is an incremental sync (true), or
+  // a full sync (false). Useful for tracking time since the last full sync.
+  bool incremental = 2;
+  // Indicates that sender requests a full sync message in return.
+  // Useful for soliciting a full sync periodically.
+  bool requesting_full_sync = 3;
 }
 
 // Request to send a list of known healthy peers
@@ -354,8 +358,7 @@ message PeerMessage {
     UpdateNonceRequest update_nonce_request = 8;
     UpdateNonceResponse update_nonce_response = 9;
 
-    SyncAccountsDataRequest sync_accounts_data_request = 25;
-    SyncAccountsDataResponse sync_accounts_data_response = 26;
+    SyncAccountsData sync_accounts_data = 25;
 
     PeersRequest peers_request = 10;
     PeersResponse peers_response = 11;
