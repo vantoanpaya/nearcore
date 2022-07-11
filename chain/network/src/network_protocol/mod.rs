@@ -15,6 +15,7 @@ mod _proto {
 pub use _proto::network as proto;
 
 use ::borsh::{BorshDeserialize as _, BorshSerialize as _};
+use near_crypto::PublicKey;
 use near_network_primitives::time;
 use near_network_primitives::types::{
     Edge, PartialEdgeInfo, PeerChainInfoV2, PeerInfo, RoutedMessageBody, RoutedMessageV2,
@@ -27,7 +28,6 @@ use near_primitives::syncing::{EpochSyncFinalizationResponse, EpochSyncResponse}
 use near_primitives::transaction::SignedTransaction;
 use near_primitives::types::{AccountId, EpochId, ProtocolVersion};
 use near_primitives::version::PEER_MIN_ALLOWED_PROTOCOL_VERSION;
-use near_crypto::PublicKey;
 use protobuf::Message as _;
 use std::fmt;
 use thiserror::Error;
@@ -48,19 +48,26 @@ pub struct AccountData {
 
 // Limit on the size of the serialized AccountData message.
 // It is important to have such a constraint on the serialized proto,
-// because it may contain many unknown fields (which are dropped during parsing). 
-pub const MAX_ACCOUNT_DATA_SIZE_BYTES : usize = 10000; // 10kB
+// because it may contain many unknown fields (which are dropped during parsing).
+pub const MAX_ACCOUNT_DATA_SIZE_BYTES: usize = 10000; // 10kB
 
 impl AccountData {
     pub fn sign(self, signer: &dyn near_crypto::Signer) -> anyhow::Result<SignedAccountData> {
         let payload = proto::AccountKeyPayload::from(&self).write_to_bytes().unwrap();
-        if payload.len()>MAX_ACCOUNT_DATA_SIZE_BYTES {
-            anyhow::bail!("payload size = {}, max is {}",payload.len(),MAX_ACCOUNT_DATA_SIZE_BYTES);
+        if payload.len() > MAX_ACCOUNT_DATA_SIZE_BYTES {
+            anyhow::bail!(
+                "payload size = {}, max is {}",
+                payload.len(),
+                MAX_ACCOUNT_DATA_SIZE_BYTES
+            );
         }
         // TODO: here we should validate that payload is not too big - i.e. that it won't exceed
         // the maximal allowed size.
         let signature = signer.sign(&payload);
-        Ok(SignedAccountData { account_data: self, payload: AccountKeySignedPayload { payload, signature } })
+        Ok(SignedAccountData {
+            account_data: self,
+            payload: AccountKeySignedPayload { payload, signature },
+        })
     }
 }
 
@@ -74,8 +81,8 @@ impl AccountKeySignedPayload {
     pub fn len(&self) -> usize {
         self.payload.len()
     }
-    pub fn verify(&self, key:&PublicKey) -> bool {
-        self.signature.verify(&self.payload,key)
+    pub fn verify(&self, key: &PublicKey) -> bool {
+        self.signature.verify(&self.payload, key)
     }
 }
 
@@ -96,7 +103,9 @@ impl std::ops::Deref for SignedAccountData {
 }
 
 impl SignedAccountData {
-    pub fn payload(&self) -> &AccountKeySignedPayload { &self.payload }
+    pub fn payload(&self) -> &AccountKeySignedPayload {
+        &self.payload
+    }
 }
 
 #[derive(PartialEq, Eq, Clone, Debug, Default)]

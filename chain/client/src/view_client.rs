@@ -1,6 +1,8 @@
 //! Readonly view of the chain and state of the database.
 //! Useful for querying from RPC.
 
+use actix::{Actor, Addr, Handler, SyncArbiter, SyncContext};
+use anyhow::Context as _;
 use near_primitives::receipt::Receipt;
 use near_primitives::time::Clock;
 use std::cmp::Ordering;
@@ -8,8 +10,6 @@ use std::collections::{HashMap, VecDeque};
 use std::hash::Hash;
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
-use anyhow::{Context as _};
-use actix::{Actor, Addr, Handler, SyncArbiter, SyncContext};
 use tracing::{debug, error, info, trace, warn};
 
 use near_chain::types::ValidatorInfoIdentifier;
@@ -31,9 +31,8 @@ use near_network::types::{NetworkRequests, PeerManagerAdapter, PeerManagerMessag
 #[cfg(feature = "test_features")]
 use near_network_primitives::types::NetworkAdversarialMessage;
 use near_network_primitives::types::{
-    NetworkViewClientMessages, NetworkViewClientResponses, ReasonForBan, StateResponseInfo,
-    StateResponseInfoV1, StateResponseInfoV2,
-    ChainInfo, EpochInfo,
+    ChainInfo, EpochInfo, NetworkViewClientMessages, NetworkViewClientResponses, ReasonForBan,
+    StateResponseInfo, StateResponseInfoV1, StateResponseInfoV2,
 };
 use near_performance_metrics_macros::{perf, perf_with_debug};
 use near_primitives::block::{Block, BlockHeader, GenesisId, Tip};
@@ -95,7 +94,7 @@ pub struct ViewClientActor {
     /// ensures that we always return a valid thing, even during transient IO errors.
     /// TODO(gprusak): this cache is per ViewClientActor, so there will be redundancy AND
     /// there is no strong guarantee on responses being monotone.
-    chain_info: ChainInfo, 
+    chain_info: ChainInfo,
     runtime_adapter: Arc<dyn RuntimeAdapter>,
     network_adapter: Arc<dyn PeerManagerAdapter>,
     pub config: ClientConfig,
@@ -137,10 +136,7 @@ impl ViewClientActor {
         )?;
         let genesis = chain.genesis();
         let chain_info = ChainInfo {
-            genesis_id: GenesisId {
-                chain_id: config.chain_id.clone(),
-                hash: *genesis.hash(),
-            },
+            genesis_id: GenesisId { chain_id: config.chain_id.clone(), hash: *genesis.hash() },
             height: genesis.height(),
             // TODO: call runtime_adapter to extract the initial set of validators.
             this_epoch: Arc::new(EpochInfo {
@@ -547,30 +543,44 @@ impl ViewClientActor {
             chain_info.tracked_shards = if self.config.tracked_shards.is_empty() {
                 vec![]
             } else {
-                let num_shards = self.runtime_adapter.num_shards(&head.epoch_id).context("Cannot retrieve num shards")?; 
+                let num_shards = self
+                    .runtime_adapter
+                    .num_shards(&head.epoch_id)
+                    .context("Cannot retrieve num shards")?;
                 (0..num_shards).collect()
             };
 
             if chain_info.this_epoch.id != head.epoch_id {
-                let info = self.runtime_adapter
+                let info = self
+                    .runtime_adapter
                     .get_validator_info(ValidatorInfoIdentifier::EpochId(head.epoch_id.clone()))
                     .context("runtime_adapter.get_validator_info()")?;
                 chain_info.this_epoch = Arc::new(EpochInfo {
                     id: head.epoch_id,
-                    priority_accounts: info.current_validators.into_iter().map(|v|(v.account_id,v.public_key)).collect(),
+                    priority_accounts: info
+                        .current_validators
+                        .into_iter()
+                        .map(|v| (v.account_id, v.public_key))
+                        .collect(),
                 });
                 chain_info.next_epoch = Arc::new(EpochInfo {
                     id: head.next_epoch_id,
-                    priority_accounts: info.next_validators.into_iter().map(|v|(v.account_id,v.public_key)).collect(),
+                    priority_accounts: info
+                        .next_validators
+                        .into_iter()
+                        .map(|v| (v.account_id, v.public_key))
+                        .collect(),
                 });
             }
 
             Ok(chain_info)
         })() {
             // update self.chain_info iff all the required data has been fetched successfully.
-            Ok(chain_info) => { self.chain_info = chain_info; }
+            Ok(chain_info) => {
+                self.chain_info = chain_info;
+            }
             // otherwise log the error and return the cached value.
-            Err(err) => error!(target: "view_client", "get_chain_info(): {}", err)
+            Err(err) => error!(target: "view_client", "get_chain_info(): {}", err),
         }
         self.chain_info.clone()
     }
@@ -1198,8 +1208,9 @@ impl Handler<NetworkViewClientMessages> for ViewClientActor {
                     NetworkViewClientResponses::NoResponse
                 }
             }
-            NetworkViewClientMessages::GetChainInfo =>
-                NetworkViewClientResponses::GetChainInfo(self.get_chain_info()),
+            NetworkViewClientMessages::GetChainInfo => {
+                NetworkViewClientResponses::GetChainInfo(self.get_chain_info())
+            }
             NetworkViewClientMessages::StateRequestHeader { shard_id, sync_hash } => {
                 if !self.check_state_sync_request() {
                     return NetworkViewClientResponses::NoResponse;
@@ -1354,7 +1365,7 @@ impl Handler<NetworkViewClientMessages> for ViewClientActor {
                             };
                         }
                         // Filter out this account. This covers both good reasons to ban the peer:
-                        // - signature didn't match the data and public_key. 
+                        // - signature didn't match the data and public_key.
                         // - account is not a validator for the given epoch
                         // and cases when we were just unable to validate the data (so we shouldn't
                         // ban), for example when the node is not aware of the public key for the given

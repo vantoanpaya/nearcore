@@ -1,10 +1,10 @@
+use crate::accounts_data;
 use crate::broadcast;
 use crate::network_protocol::testonly as data;
-use crate::peer_manager::peer_manager_actor::PeerManagerState;
-use crate::accounts_data;
 use crate::peer::codec::Codec;
 use crate::peer::peer_actor;
 use crate::peer::peer_actor::PeerActor;
+use crate::peer_manager::peer_manager_actor::PeerManagerState;
 use crate::private_actix::{PeerRequestResult, RegisterPeerResponse, SendMessage};
 use crate::private_actix::{PeerToManagerMsg, PeerToManagerMsgResp};
 use crate::testonly::actix::ActixSystem;
@@ -174,7 +174,7 @@ impl PeerHandle {
         match self.events.recv().await {
             Event::HandshakeDone(edge) => edge,
             ev => panic!("want HandshakeDone, got {ev:?}"),
-        } 
+        }
     }
 
     pub fn routed_message(
@@ -240,7 +240,7 @@ impl PeerHandle {
                         view_client_addr: fc.clone().recipient(),
                         accounts_data: Arc::new(accounts_data::Cache::new()),
                         connected_peers: Default::default(),
-                        network_metrics: Default::default(), 
+                        network_metrics: Default::default(),
                     }),
                     send.sink().compose(Event::Peer),
                 )

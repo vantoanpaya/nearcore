@@ -321,15 +321,14 @@ pub mod test_features {
     use actix::actors::mocker::Mocker;
     use actix::Actor;
     use near_network_primitives::types::{
-        NetworkConfig, NetworkViewClientMessages, NetworkViewClientResponses,
-        ChainInfo, EpochInfo,
+        ChainInfo, EpochInfo, NetworkConfig, NetworkViewClientMessages, NetworkViewClientResponses,
     };
-    use near_primitives::types::EpochId;
     use near_primitives::block::GenesisId;
+    use near_primitives::types::EpochId;
     use near_store::Store;
+    use std::collections::HashMap;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
-    use std::collections::HashMap;
 
     /// Mock for `ClientActor`
     type ClientMock = Mocker<NetworkClientMessages>;
@@ -364,14 +363,20 @@ pub mod test_features {
                     )))
                 }
                 NetworkViewClientMessages::GetChainInfo => {
-                    Box::new(Some(NetworkViewClientResponses::GetChainInfo(ChainInfo{
+                    Box::new(Some(NetworkViewClientResponses::GetChainInfo(ChainInfo {
                         genesis_id: GenesisId::default(),
                         tracked_shards: vec![],
                         archival: false,
-                        
+
                         height: 1,
-                        this_epoch: Arc::new(EpochInfo{id:EpochId::default(), priority_accounts: HashMap::default()}),
-                        next_epoch: Arc::new(EpochInfo{id:EpochId::default(), priority_accounts: HashMap::default()}),
+                        this_epoch: Arc::new(EpochInfo {
+                            id: EpochId::default(),
+                            priority_accounts: HashMap::default(),
+                        }),
+                        next_epoch: Arc::new(EpochInfo {
+                            id: EpochId::default(),
+                            priority_accounts: HashMap::default(),
+                        }),
                     })))
                 }
                 _ => Box::new(Some(NetworkViewClientResponses::NoResponse)),

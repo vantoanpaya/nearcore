@@ -17,35 +17,38 @@ fn max_account_data_size() {
     let clock = time::FakeClock::default();
     // rule of thumb: 10x IPv6 should be considered a valid account_data.
     let signer = data::make_signer(&mut rng);
-    
+
     let ad = AccountData {
-        peers: (0..10).map(|_|{
-            let ip = data::make_ipv6(&mut rng);
-            data::make_peer_addr(&mut rng, ip)
-        }).collect(),
+        peers: (0..10)
+            .map(|_| {
+                let ip = data::make_ipv6(&mut rng);
+                data::make_peer_addr(&mut rng, ip)
+            })
+            .collect(),
         account_id: signer.account_id.clone(),
         epoch_id: data::make_epoch_id(&mut rng),
         timestamp: clock.now_utc(),
     };
     let sad = ad.sign(&signer).unwrap();
-    assert!(sad.payload().len()<=MAX_ACCOUNT_DATA_SIZE_BYTES);
+    assert!(sad.payload().len() <= MAX_ACCOUNT_DATA_SIZE_BYTES);
 }
 
 #[test]
 fn serialize_deserialize_protobuf_only() {
     let mut rng = make_rng(39521947542);
     let clock = time::FakeClock::default();
-    let msgs = [
-        PeerMessage::SyncAccountsData(SyncAccountsData{
-            accounts_data: (0..4).map(|_|data::make_signed_account_data(&mut rng, &clock.clock())).collect(),
-            incremental: true,
-            requesting_full_sync: true,
-        }),
-    ];
+    let msgs = [PeerMessage::SyncAccountsData(SyncAccountsData {
+        accounts_data: (0..4)
+            .map(|_| data::make_signed_account_data(&mut rng, &clock.clock()))
+            .collect(),
+        incremental: true,
+        requesting_full_sync: true,
+    })];
     for m in msgs {
         let m2 = PeerMessage::deserialize(Encoding::Proto, &m.serialize(Encoding::Proto))
-            .with_context(|| format!("{m}")).unwrap();
-        assert_eq!(m,m2);
+            .with_context(|| format!("{m}"))
+            .unwrap();
+        assert_eq!(m, m2);
     }
 }
 

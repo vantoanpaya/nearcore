@@ -1,9 +1,9 @@
 pub use crate::tests::network::runner::*;
+use std::collections::HashMap;
 use std::net::{SocketAddr, TcpStream};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
-use std::collections::HashMap;
 
 use actix::actors::mocker::Mocker;
 use actix::System;
@@ -21,8 +21,7 @@ use near_network::test_utils::{
 use near_network::types::NetworkClientResponses;
 use near_network::PeerManagerActor;
 use near_network_primitives::types::{
-    ChainInfo, EpochInfo,
-    NetworkConfig, NetworkViewClientMessages, NetworkViewClientResponses,
+    ChainInfo, EpochInfo, NetworkConfig, NetworkViewClientMessages, NetworkViewClientResponses,
 };
 #[cfg(test)]
 use near_store::test_utils::create_test_store;
@@ -49,14 +48,20 @@ fn make_peer_manager(
         let msg = msg.downcast_ref::<NetworkViewClientMessages>().unwrap();
         match msg {
             NetworkViewClientMessages::GetChainInfo => {
-                Box::new(Some(NetworkViewClientResponses::GetChainInfo(ChainInfo{
+                Box::new(Some(NetworkViewClientResponses::GetChainInfo(ChainInfo {
                     genesis_id: Default::default(),
                     tracked_shards: vec![],
                     archival: false,
-                    
+
                     height: 1,
-                    this_epoch: Arc::new(EpochInfo{id:EpochId::default(), priority_accounts: HashMap::new()}),
-                    next_epoch: Arc::new(EpochInfo{id:EpochId::default(), priority_accounts: HashMap::new()}),
+                    this_epoch: Arc::new(EpochInfo {
+                        id: EpochId::default(),
+                        priority_accounts: HashMap::new(),
+                    }),
+                    next_epoch: Arc::new(EpochInfo {
+                        id: EpochId::default(),
+                        priority_accounts: HashMap::new(),
+                    }),
                 })))
             }
             _ => Box::new(Some(NetworkViewClientResponses::NoResponse)),

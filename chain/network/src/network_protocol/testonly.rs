@@ -1,12 +1,10 @@
 use super::*;
 
-use std::sync::Arc;
 use crate::types::{Handshake, RoutingTableUpdate};
 use near_crypto::{InMemorySigner, KeyType, SecretKey};
 use near_network_primitives::time;
 use near_network_primitives::types::{
-    ChainInfo, EpochInfo,
-    AccountOrPeerIdOrHash, Edge, PartialEdgeInfo, PeerInfo, RawRoutedMessage,
+    AccountOrPeerIdOrHash, ChainInfo, Edge, EpochInfo, PartialEdgeInfo, PeerInfo, RawRoutedMessage,
     RoutedMessageBody,
 };
 use near_primitives::block::{genesis_chunks, Block, BlockHeader, GenesisId};
@@ -26,6 +24,7 @@ use rand::distributions::Standard;
 use rand::Rng;
 use std::collections::HashMap;
 use std::net;
+use std::sync::Arc;
 
 pub fn make_genesis_block(_clock: &time::Clock, chunks: Vec<ShardChunk>) -> Block {
     Block::genesis(
@@ -226,14 +225,17 @@ impl ChunkSet {
     }
 }
 
-pub fn make_epoch_id<R:Rng>(rng: &mut R) -> EpochId {
-    EpochId(CryptoHash::hash_bytes(&rng.gen::<[u8;19]>()))
+pub fn make_epoch_id<R: Rng>(rng: &mut R) -> EpochId {
+    EpochId(CryptoHash::hash_bytes(&rng.gen::<[u8; 19]>()))
 }
 
-pub fn make_epoch_info(id:EpochId, signers: &[InMemorySigner]) -> EpochInfo {
-    EpochInfo{
+pub fn make_epoch_info(id: EpochId, signers: &[InMemorySigner]) -> EpochInfo {
+    EpochInfo {
         id,
-        priority_accounts: signers.iter().map(|s|(s.account_id.clone(),s.public_key.clone())).collect(),
+        priority_accounts: signers
+            .iter()
+            .map(|s| (s.account_id.clone(), s.public_key.clone()))
+            .collect(),
     }
 }
 
@@ -261,8 +263,8 @@ impl Chain {
                 hash: Default::default(),
             },
             blocks,
-            this_epoch: (0..5).map(|_|make_signer(rng)).collect(),
-            next_epoch: (0..5).map(|_|make_signer(rng)).collect(),
+            this_epoch: (0..5).map(|_| make_signer(rng)).collect(),
+            next_epoch: (0..5).map(|_| make_signer(rng)).collect(),
             chunks: chunks.chunks,
         }
     }
@@ -280,10 +282,13 @@ impl Chain {
             genesis_id: self.genesis_id.clone(),
             tracked_shards: Default::default(),
             archival: false,
-            
+
             height: self.height(),
             this_epoch: Arc::new(make_epoch_info(self.tip().epoch_id().clone(), &self.this_epoch)),
-            next_epoch: Arc::new(make_epoch_info(self.tip().next_epoch_id().clone(), &self.next_epoch)),
+            next_epoch: Arc::new(make_epoch_info(
+                self.tip().next_epoch_id().clone(),
+                &self.next_epoch,
+            )),
         }
     }
 
@@ -333,7 +338,11 @@ pub fn make_peer_addr(rng: &mut impl Rng, ip: net::IpAddr) -> PeerAddr {
     PeerAddr { addr: net::SocketAddr::new(ip, rng.gen()), peer_id: Some(make_peer_id(rng)) }
 }
 
-pub fn make_account_data(rng: &mut impl Rng, clock: &time::Clock, account_id: AccountId) -> AccountData {
+pub fn make_account_data(
+    rng: &mut impl Rng,
+    clock: &time::Clock,
+    account_id: AccountId,
+) -> AccountData {
     AccountData {
         peers: vec![
             // Can't inline make_ipv4/ipv6 calls, because 2-phase borrow

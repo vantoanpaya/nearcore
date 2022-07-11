@@ -1,19 +1,19 @@
-use crate::network_protocol::{SyncAccountsData, Encoding, ParsePeerMessageError};
+use crate::accounts_data;
+use crate::network_protocol::{Encoding, ParsePeerMessageError, SyncAccountsData};
 use crate::peer::codec::Codec;
 use crate::peer::tracker::Tracker;
-use crate::sink::Sink;
+use crate::peer_manager::peer_manager_actor::PeerManagerState;
 use crate::private_actix::PeersResponse;
 use crate::private_actix::{PeerToManagerMsg, PeerToManagerMsgResp};
 use crate::private_actix::{
     PeersRequest, RegisterPeer, RegisterPeerResponse, SendMessage, Unregister,
 };
-use crate::peer_manager::peer_manager_actor::PeerManagerState;
+use crate::sink::Sink;
 use crate::stats::metrics;
 use crate::types::{
     Handshake, HandshakeFailureReason, NetworkClientMessages, NetworkClientResponses, PeerMessage,
     PeerStatsResult, QueryPeerStats,
 };
-use crate::accounts_data;
 use actix::{
     Actor, ActorContext, ActorFutureExt, Arbiter, AsyncContext, Context, ContextFutureSpawner,
     Handler, Recipient, Running, StreamHandler, WrapFuture,
@@ -65,7 +65,7 @@ const ROUTED_MESSAGE_CACHE_SIZE: usize = 1000;
 const DROP_DUPLICATED_MESSAGES_PERIOD: time::Duration = time::Duration::milliseconds(50);
 
 // TEST-ONLY
-#[derive(Debug,PartialEq,Eq,Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Event {
     // Reported once a message has been processed.
     // In contrast to typical RPC protocols, many P2P messages do not trigger
@@ -73,7 +73,7 @@ pub enum Event {
     // However, for precise instrumentation in tests it is useful to know when
     // processing has been finished. We simulate the "RPC response" by reporting
     // an event MessageProcessed.
-    // 
+    //
     // Given that processing is asynchronous and unstructured as of now,
     // it is hard to pinpoint all the places when the processing of a message is
     // actually complete. Currently this event is reported only for some message types,
@@ -130,9 +130,9 @@ pub(crate) struct PeerActor {
     /// a given encoding right away.
     force_encoding: Option<Encoding>,
 
-    peer_manager_state : Arc<PeerManagerState>,
+    peer_manager_state: Arc<PeerManagerState>,
     /// test-only.
-    event_sink : Sink<Event>, 
+    event_sink: Sink<Event>,
 }
 
 impl Debug for PeerActor {
@@ -168,7 +168,7 @@ impl PeerActor {
         throttle_controller: ThrottleController,
         force_encoding: Option<Encoding>,
         peer_manager_state: Arc<PeerManagerState>,
-        event_sink : Sink<Event>,
+        event_sink: Sink<Event>,
     ) -> Self {
         let now = clock.now();
         PeerActor {
@@ -271,14 +271,12 @@ impl PeerActor {
     }
 
     fn fetch_client_chain_info(&self, ctx: &mut Context<PeerActor>) {
-        ctx.wait(
-            self.peer_manager_state.clone().get_chain_info()
-                .into_actor(self)
-                .then(move |info, act, _ctx| {
-                    act.genesis_id = info.genesis_id;
-                    actix::fut::ready(())
-                }),
-        );
+        ctx.wait(self.peer_manager_state.clone().get_chain_info().into_actor(self).then(
+            move |info, act, _ctx| {
+                act.genesis_id = info.genesis_id;
+                actix::fut::ready(())
+            },
+        ));
     }
 
     fn send_handshake(&self, ctx: &mut Context<PeerActor>) {
@@ -389,7 +387,8 @@ impl PeerActor {
             }
         };
 
-        self.peer_manager_state.view_client_addr
+        self.peer_manager_state
+            .view_client_addr
             .send(view_client_message)
             .into_actor(self)
             .then(move |res, act, _ctx| {
@@ -1030,7 +1029,7 @@ impl StreamHandler<Result<Vec<u8>, ReasonForBan>> for PeerActor {
                 // In case a full sync is requested, immediately send what we got.
                 // It is a microoptimization: we do not send back the data we just received.
                 if msg.requesting_full_sync {
-                    self.send_message_or_log(&PeerMessage::SyncAccountsData(SyncAccountsData{
+                    self.send_message_or_log(&PeerMessage::SyncAccountsData(SyncAccountsData {
                         requesting_full_sync: false,
                         incremental: false,
                         accounts_data: pms.accounts_data.dump(),
@@ -1043,23 +1042,25 @@ impl StreamHandler<Result<Vec<u8>, ReasonForBan>> for PeerActor {
                     }
                     // Check if the chain progressed to the next epoch.
                     let chain_info = pms.clone().get_chain_info().await;
-                    pms.accounts_data.set_epochs(vec![&chain_info.this_epoch,&chain_info.next_epoch]);
+                    pms.accounts_data
+                        .set_epochs(vec![&chain_info.this_epoch, &chain_info.next_epoch]);
                     // Verify and add the new data to the internal state.
-                    let (new_data,err) = pms.accounts_data.clone().insert(msg.accounts_data).await;
+                    let (new_data, err) = pms.accounts_data.clone().insert(msg.accounts_data).await;
                     // Broadcast any new data we have found.
                     // TODO(gprusak): this should be rate limited - diffs should be aggregated,
                     // unless there was no recent broadcast of this type.
-                    if new_data.len()>0 {
-                        pms.broadcast_message(SendMessage{
-                            message: PeerMessage::SyncAccountsData(SyncAccountsData{
+                    if new_data.len() > 0 {
+                        pms.broadcast_message(SendMessage {
+                            message: PeerMessage::SyncAccountsData(SyncAccountsData {
                                 incremental: true,
                                 requesting_full_sync: false,
                                 accounts_data: new_data,
                             }),
                             context: Span::current().context(),
-                        }).await;
+                        })
+                        .await;
                     }
-                    err.map(|err|match err {
+                    err.map(|err| match err {
                         accounts_data::Error::InvalidSignature => ReasonForBan::InvalidSignature,
                         accounts_data::Error::DataTooLarge => ReasonForBan::Abusive,
                         accounts_data::Error::SingleAccountMultipleData => ReasonForBan::Abusive,

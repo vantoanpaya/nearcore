@@ -103,14 +103,14 @@ impl From<&PeerMessage> for proto::PeerMessage {
                         ..Default::default()
                     })
                 }
-                PeerMessage::SyncAccountsData(msg) => ProtoMT::SyncAccountsData(
-                    proto::SyncAccountsData{
+                PeerMessage::SyncAccountsData(msg) => {
+                    ProtoMT::SyncAccountsData(proto::SyncAccountsData {
                         accounts_data: msg.accounts_data.iter().map(Into::into).collect(),
                         incremental: msg.incremental,
                         requesting_full_sync: msg.requesting_full_sync,
                         ..Default::default()
-                    }
-                ),
+                    })
+                }
                 PeerMessage::PeersRequest => ProtoMT::PeersRequest(proto::PeersRequest::new()),
                 PeerMessage::PeersResponse(pis) => ProtoMT::PeersResponse(proto::PeersResponse {
                     peers: pis.iter().map(Into::into).collect(),
@@ -256,8 +256,9 @@ impl TryFrom<&proto::PeerMessage> for PeerMessage {
             ProtoMT::UpdateNonceResponse(unr) => PeerMessage::ResponseUpdateNonce(
                 try_from_required(&unr.edge).map_err(Self::Error::UpdateNonceResponse)?,
             ),
-            ProtoMT::SyncAccountsData(msg) => PeerMessage::SyncAccountsData(SyncAccountsData{
-                accounts_data: try_from_slice(&msg.accounts_data).map_err(Self::Error::SyncAccountsData)?,
+            ProtoMT::SyncAccountsData(msg) => PeerMessage::SyncAccountsData(SyncAccountsData {
+                accounts_data: try_from_slice(&msg.accounts_data)
+                    .map_err(Self::Error::SyncAccountsData)?,
                 incremental: msg.incremental,
                 requesting_full_sync: msg.requesting_full_sync,
             }),

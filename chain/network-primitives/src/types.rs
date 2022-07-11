@@ -11,8 +11,8 @@ use crate::time;
 /// - We also export publicly types from `crate::network_protocol`
 use actix::Message;
 use borsh::{BorshDeserialize, BorshSerialize};
-use near_crypto::SecretKey;
 use near_crypto::PublicKey;
+use near_crypto::SecretKey;
 use near_primitives::block::{Block, BlockHeader, GenesisId};
 use near_primitives::hash::CryptoHash;
 use near_primitives::network::{AnnounceAccount, PeerId};
@@ -21,12 +21,12 @@ use near_primitives::transaction::ExecutionOutcomeWithIdAndProof;
 use near_primitives::types::{AccountId, BlockHeight, EpochId, ShardId};
 use near_primitives::views::{FinalExecutionOutcomeView, QueryResponse};
 use serde::Serialize;
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::net::SocketAddr;
-use tokio::net::TcpStream;
-use std::collections::HashMap;
 use std::sync::Arc;
+use tokio::net::TcpStream;
 
 /// Exported types, which are part of network protocol.
 pub use crate::network_protocol::{
@@ -323,7 +323,7 @@ pub enum NetworkViewClientMessages {
 }
 
 // Network-relevant data about the epoch.
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 pub struct EpochInfo {
     pub id: EpochId,
     // Public keys of accounts participating in the BFT consensus.
@@ -331,12 +331,12 @@ pub struct EpochInfo {
     // They are collectively known as "validators".
     // Peers acting on behalf of these accounts have a higher
     // priority on the NEAR network than other peers.
-    pub priority_accounts: HashMap<AccountId,PublicKey>,
+    pub priority_accounts: HashMap<AccountId, PublicKey>,
 }
 
 /// Network-relevant data about the chain.
 // TODO(gprusak): it is more like node info, or sth.
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 pub struct ChainInfo {
     pub genesis_id: GenesisId,
     pub tracked_shards: Vec<ShardId>,
@@ -360,7 +360,7 @@ pub enum NetworkViewClientResponses {
     /// Headers response.
     BlockHeaders(Vec<BlockHeader>),
     /// Chain information.
-    GetChainInfo(ChainInfo), 
+    GetChainInfo(ChainInfo),
     /// Response to state request.
     StateResponse(Box<StateResponseInfo>),
     /// Valid announce accounts.

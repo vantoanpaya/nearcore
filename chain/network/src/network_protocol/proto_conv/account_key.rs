@@ -3,7 +3,7 @@ use super::*;
 
 use crate::network_protocol::proto;
 use crate::network_protocol::proto::account_key_payload::Payload_type as ProtoPT;
-use crate::network_protocol::{AccountKeySignedPayload, SignedAccountData, AccountData};
+use crate::network_protocol::{AccountData, AccountKeySignedPayload, SignedAccountData};
 use near_primitives::account::id::ParseAccountError;
 use near_primitives::types::EpochId;
 use protobuf::{Message as _, MessageField as MF};

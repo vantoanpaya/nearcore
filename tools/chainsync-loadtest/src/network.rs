@@ -3,9 +3,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use crate::concurrency::{Ctx, Once, RateLimiter, Scope, WeakMap};
 
 use near_network_primitives::types::{
-    AccountIdOrPeerTrackingShard, NetworkViewClientMessages, NetworkViewClientResponses,
-    PartialEncodedChunkRequestMsg, PartialEncodedChunkResponseMsg,
-    ChainInfo, EpochInfo,
+    AccountIdOrPeerTrackingShard, ChainInfo, EpochInfo, NetworkViewClientMessages,
+    NetworkViewClientResponses, PartialEncodedChunkRequestMsg, PartialEncodedChunkResponseMsg,
 };
 
 use actix::{Actor, Context, Handler};
@@ -14,7 +13,6 @@ use near_network::types::{
     FullPeerInfo, NetworkClientMessages, NetworkClientResponses, NetworkInfo, NetworkRequests,
     PeerManagerAdapter, PeerManagerMessageRequest,
 };
-use std::collections::HashMap;
 use near_primitives::block::{Block, BlockHeader, GenesisId};
 use near_primitives::hash::CryptoHash;
 use near_primitives::sharding::{ChunkHash, ShardChunkHeader};
@@ -23,6 +21,7 @@ use near_primitives::types::EpochId;
 use nearcore::config::NearConfig;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
+use std::collections::HashMap;
 use std::future::Future;
 use std::sync::{Arc, Mutex};
 use tokio::sync::oneshot;
@@ -332,10 +331,16 @@ impl Handler<NetworkViewClientMessages> for FakeClientActor {
                     },
                     tracked_shards: Default::default(),
                     archival: false,
-                    
+
                     height: 0,
-                    this_epoch: Arc::new(EpochInfo{id:EpochId::default(), priority_accounts: HashMap::default()}),
-                    next_epoch: Arc::new(EpochInfo{id:EpochId::default(), priority_accounts: HashMap::default()}),
+                    this_epoch: Arc::new(EpochInfo {
+                        id: EpochId::default(),
+                        priority_accounts: HashMap::default(),
+                    }),
+                    next_epoch: Arc::new(EpochInfo {
+                        id: EpochId::default(),
+                        priority_accounts: HashMap::default(),
+                    }),
                 })
             }
             NetworkViewClientMessages::AnnounceAccount(_) => {

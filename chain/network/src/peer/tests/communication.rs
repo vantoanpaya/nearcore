@@ -1,7 +1,7 @@
 use crate::network_protocol::testonly as data;
 use crate::network_protocol::Encoding;
-use crate::peer::testonly::{Event, PeerConfig, PeerHandle};
 use crate::peer::peer_actor;
+use crate::peer::testonly::{Event, PeerConfig, PeerHandle};
 use crate::testonly::fake_client::Event as CE;
 use crate::testonly::make_rng;
 use crate::testonly::stream::Stream;
@@ -56,7 +56,7 @@ async fn test_peer_communication(
     let filter = |ev| match ev {
         Event::Peer(peer_actor::Event::MessageProcessed(PeerMessage::SyncAccountsData(_))) => None,
         Event::RoutingTable(_) => None,
-        ev => Some(ev), 
+        ev => Some(ev),
     };
 
     // RequestUpdateNonce
