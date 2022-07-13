@@ -445,24 +445,17 @@ mod tests {
             &[
                 // test1 is not included in proposals below, and will get kicked out because
                 // their stake is too low.
-                ("test1", test1_stake, Proposal::BlockProducer),
+                ("test1", test1_stake),
                 // test2 submitted a new proposal, so their stake will come from there, but it
                 // too will be kicked out
-                ("test2", 1234, Proposal::ChunkOnlyProducer),
+                ("test2", 1234),
             ],
             &[],
         );
-        let proposals = create_proposals((2..(2 * num_bp_seats + num_cp_seats)).map(|i| {
-            (
-                format!("test{}", i),
-                2000u128 + (i as u128),
-                if i <= num_cp_seats {
-                    Proposal::ChunkOnlyProducer
-                } else {
-                    Proposal::BlockProducer
-                },
-            )
-        }));
+        let proposals = create_proposals(
+            (2..(2 * num_bp_seats + num_cp_seats))
+                .map(|i| (format!("test{}", i), 2000u128 + (i as u128))),
+        );
         let epoch_info = proposals_to_epoch_info(
             &epoch_config,
             [0; 32],
@@ -477,6 +470,10 @@ mod tests {
         .unwrap();
 
         assert_eq!(epoch_info.epoch_height(), prev_epoch_height + 1);
+        println!("block producers {:?}", epoch_info.block_producers_settlement());
+        for (i, chunk_producers) in epoch_info.chunk_producers_settlement().iter().enumerate() {
+            println!("shard {} chunk producers {:?}", i, chunk_producers);
+        }
 
         // the top stakes are the chosen block producers
         let mut sorted_proposals = proposals;
@@ -884,13 +881,6 @@ mod tests {
         ps.into_iter().map(IntoValidatorStake::into_validator_stake).collect()
     }
 
-    #[derive(Debug, PartialEq, Eq, Copy, Clone)]
-    #[cfg(feature = "protocol_feature_chunk_only_producers")]
-    enum Proposal {
-        BlockProducer,
-        ChunkOnlyProducer,
-    }
-
     trait IntoValidatorStake {
         fn into_validator_stake(self) -> ValidatorStake;
     }
@@ -908,20 +898,6 @@ mod tests {
     }
 
     impl IntoValidatorStake for (String, Balance) {
-        fn into_validator_stake(self) -> ValidatorStake {
-            ValidatorStake::new(self.0.parse().unwrap(), PublicKey::empty(KeyType::ED25519), self.1)
-        }
-    }
-
-    #[cfg(feature = "protocol_feature_chunk_only_producers")]
-    impl IntoValidatorStake for (&str, Balance, Proposal) {
-        fn into_validator_stake(self) -> ValidatorStake {
-            ValidatorStake::new(self.0.parse().unwrap(), PublicKey::empty(KeyType::ED25519), self.1)
-        }
-    }
-
-    #[cfg(feature = "protocol_feature_chunk_only_producers")]
-    impl IntoValidatorStake for (String, Balance, Proposal) {
         fn into_validator_stake(self) -> ValidatorStake {
             ValidatorStake::new(self.0.parse().unwrap(), PublicKey::empty(KeyType::ED25519), self.1)
         }

@@ -169,6 +169,10 @@ fn display_epoch_info(
     epoch_manager: &mut EpochManager,
     runtime_adapter: Arc<dyn RuntimeAdapter>,
 ) {
+    for validator_stake in epoch_info.validators_iter() {
+        print!("{:?},", validator_stake.stake());
+    }
+    /*
     println!("{:?}: {:#?}", epoch_id, epoch_info);
     if epoch_info.epoch_height() >= *head_epoch_height {
         println!("Epoch information for this epoch is not yet available, skipping.");
@@ -184,6 +188,7 @@ fn display_epoch_info(
             runtime_adapter,
         );
     }
+     */
 }
 
 fn display_validator_info(
